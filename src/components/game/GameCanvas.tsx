@@ -34,12 +34,16 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
     const keys = new Set<string>();
     let raf = 0, last = performance.now(), t = 0;
 
+    // Phones get a lower pixel density cap: much less fill work per frame, still sharp.
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * dpr; canvas.height = window.innerHeight * dpr;
+      const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
+      canvas.width = Math.round(window.innerWidth * dpr); canvas.height = Math.round(window.innerHeight * dpr);
     };
     resize();
     window.addEventListener("resize", resize);
+    window.addEventListener("orientationchange", resize);
+    window.visualViewport?.addEventListener("resize", resize);
     const kd = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)) { keys.add(k); e.preventDefault(); } };
     const ku = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
     const blur = () => keys.clear();
@@ -105,7 +109,10 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = "#120a3a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * (vw / 2 - cx * zoom), dpr * (vh / 2 - cy * zoom));
-      ctx.drawImage(world, 0, 0);
+      // Only copy the visible part of the big map each frame.
+      const sx = Math.max(0, Math.floor(cx - hw - 2)), sy = Math.max(0, Math.floor(cy - hh - 2));
+      const sw = Math.min(WORLD_W - sx, Math.ceil(hw * 2 + 4)), sh = Math.min(WORLD_H - sy, Math.ceil(hh * 2 + 4));
+      ctx.drawImage(world, sx, sy, sw, sh, sx, sy, sw, sh);
       drawFacilities(ctx, facilities, t, solarRef?.current.cleanliness ?? 100, solarRef?.current.progress ?? null);
       const placing = placementRef?.current;
       if (placing) {
@@ -134,7 +141,7 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); canvas.removeEventListener("pointerdown", click); canvas.removeEventListener("pointermove", move); window.removeEventListener("resize", resize); window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", blur); };
+    return () => { cancelAnimationFrame(raf); canvas.removeEventListener("pointerdown", click); canvas.removeEventListener("pointermove", move); window.removeEventListener("resize", resize); window.removeEventListener("orientationchange", resize); window.visualViewport?.removeEventListener("resize", resize); window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", blur); };
   }, [character, input, posRef, markersRef, speedRef, viewRef, fxRef, navRef, facilitiesRef, placementRef, solarRef]);
 
   return <canvas ref={ref} className="absolute inset-0 block h-full w-full" aria-label="Mars colony game world" />;
