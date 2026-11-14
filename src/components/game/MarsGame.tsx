@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { GameCanvas, type InputState, type PlacementCursor } from "./GameCanvas";
-import { BuildMenu, FacilityPanel, PlacementBar } from "./FacilityPanels";
+import { BuildMenu, FacilityPanel, PlacementBar, SHEET } from "./FacilityPanels";
 import { Joystick } from "./Joystick";
 import { PipPortrait } from "./Pip";
 import { CharacterSelect } from "./CharacterSelect";
 import { BUILDINGS, LANDMARKS } from "@/game/world";
 import { canPlace, facilityName, stationForFacility, type BuildableKind, type Facility } from "@/game/facilities";
 import { loadCharacter, loadSim, resetGame, saveCharacter, saveSim } from "@/game/storage";
-import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, type AudioSettings } from "@/game/sound";
+import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, setAmbience, setMusicMood, type AudioSettings } from "@/game/sound";
+import { alertSoundFor, ambienceFor, musicMood } from "@/game/audioRules";
+import { useCompact } from "@/hooks/use-compact";
 import { newFx, type Nav } from "@/game/fx";
 import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
 import type { Character, Landmark } from "@/game/types";
@@ -47,7 +49,7 @@ function hitStation(x: number, y: number, st: string, s: Sim): boolean {
   return s.facilities.some((b) => b.remaining <= 0 && stationForFacility(b.kind) === st && x > b.x - 20 && x < b.x + b.w + 20 && y > b.y - 40 && y < b.y + b.h + 20);
 }
 
-function FacilityButton({ station, view, facilities, pos, label, onOpen }: { station: string; view: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; facilities: React.MutableRefObject<Facility[]>; pos: React.MutableRefObject<{ x: number; y: number }>; label: React.ReactNode; onOpen: () => void }) {
+function FacilityButton({ station, view, facilities, pos, hud, label, onOpen }: { station: string; view: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; facilities: React.MutableRefObject<Facility[]>; pos: React.MutableRefObject<{ x: number; y: number }>; hud: React.MutableRefObject<{ top: number; bottom: number }>; label: React.ReactNode; onOpen: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     let raf = 0;
@@ -58,16 +60,17 @@ function FacilityButton({ station, view, facilities, pos, label, onOpen }: { sta
         const sx = vw / 2 + (p.x - v.cx) * v.zoom, sy = vh / 2 + (p.top - v.cy) * v.zoom;
         const w = el.offsetWidth, h = el.offsetHeight;
         const x = Math.max(8, Math.min(vw - w - 8, sx - w / 2));
-        const y = Math.max(vh * 0.28, Math.min(vh - h - 150, sy - h));
+        const lo = hud.current.top + 8, hi = Math.max(lo, hud.current.bottom - h - 8);
+        const y = Math.max(lo, Math.min(hi, sy - h));
         el.style.transform = `translate(${x}px, ${y}px)`;
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [station, view, facilities, pos]);
+  }, [station, view, facilities, pos, hud]);
   return (
-    <button ref={ref} onClick={onOpen} className="hud-panel start-btn pointer-events-auto absolute left-0 top-0 z-10 flex items-center gap-2 rounded-2xl px-5 py-3 text-base font-bold sm:text-lg" style={{ transform: "translate(-9999px,0)" }}>
+    <button data-sfx ref={ref} onClick={onOpen} className="hud-panel start-btn pointer-events-auto absolute left-0 top-0 z-10 flex max-w-[80vw] items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold sm:px-5 sm:py-3 sm:text-lg" style={{ transform: "translate(-9999px,0)" }}>
       {label}
     </button>
   );
@@ -116,6 +119,38 @@ export function MarsGame() {
   const updAudio = (p: Partial<AudioSettings>) => { setSettings(p); setAudio(getSettings()); };
   useEffect(() => { unlockAudio(); }, []);
   const [logOpen, setLogOpen] = useState<"" | "log" | "ach">("");
+  const compact = useCompact();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [missionOpen, setMissionOpen] = useState(false);
+  const [pipMin, setPipMin] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hudTopRef = useRef<HTMLDivElement>(null);
+  const hudBottomRef = useRef<HTMLDivElement>(null);
+  const hud = useRef({ top: 120, bottom: 600 });
+  useEffect(() => { setPipMin(false); }, [pip]);
+  // Track the space the top status bar and bottom controls take, so panels and buttons never overlap them.
+  useEffect(() => {
+    const measure = () => {
+      const top = hudTopRef.current?.getBoundingClientRect().bottom ?? 120;
+      const b = hudBottomRef.current?.getBoundingClientRect(), bottom = b && b.height > 0 ? b.top : window.innerHeight - 8;
+      hud.current = { top, bottom };
+      rootRef.current?.style.setProperty("--hud-top", `${Math.round(top)}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (hudTopRef.current) ro.observe(hudTopRef.current);
+    if (hudBottomRef.current) ro.observe(hudBottomRef.current);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  });
+  // Block pinch-zoom and double-tap zoom gestures that some phones still allow.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    const pinch = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault(); };
+    document.addEventListener("gesturestart", stop);
+    document.addEventListener("touchmove", pinch, { passive: false });
+    return () => { document.removeEventListener("gesturestart", stop); document.removeEventListener("touchmove", pinch); };
+  }, []);
   simRef.current = sim;
   facilitiesRef.current = sim.facilities;
   solarRef.current = { cleanliness: sim.panels, progress: sim.cleaning > 0 ? 100 * (1 - sim.cleaning / CLEANING_SECONDS) : null };
@@ -128,13 +163,14 @@ export function MarsGame() {
     let last = performance.now(), saved = 0;
     const id = setInterval(() => {
       const now = performance.now(), dt = Math.min(1, (now - last) / 1000); last = now;
+      if (document.hidden) return; // no background work while the game isn't on screen
       const prev = simRef.current, next = briefRef.current ? prev : reward(tick(prev, dt));
       if (next !== prev) {
         simRef.current = next; setSim(next);
         const completed = next.facilities.find((f) => f.built && f.remaining === 0 && prev.facilities.some((p) => p.id === f.id && p.remaining > 0));
-        if (completed) { play("goal", `built-${completed.id}`); setToast({ id: ++toastN.current, text: `🏗️ ${facilityName(completed)} is ready!` }); setPip("Construction complete! The new facility is now connected to the base. Check the Facility Status panel."); }
+        if (completed) { play("built", `built-${completed.id}`); setToast({ id: ++toastN.current, text: `🏗️ ${facilityName(completed)} is ready!` }); setPip("Construction complete! The new facility is now connected to the base. Check the Facility Status panel."); }
         const o2 = oxygenAlert(prev, next);
-        if (o2) { play(o2 === "critical" ? "critical" : "alert", `oxygen-${o2}`); setToast({ id: ++toastN.current, text: o2 === "critical" ? "🚨 Oxygen critical — 10% left!" : "🫧 Oxygen low — 20% left!" }); }
+        if (o2) { play(o2 === "critical" ? "critical" : "low-oxygen", `oxygen-${o2}`); setToast({ id: ++toastN.current, text: o2 === "critical" ? "🚨 Oxygen critical — 10% left!" : "🫧 Oxygen low — 20% left!" }); }
         if (prev.cleaning > 0 && next.cleaning === 0 && next.status === "day") { play("goal", "panels-clean"); setToast({ id: ++toastN.current, text: "✨ Solar panels fully clean — maximum efficiency!" }); setPip("Excellent cleaning! The panels are now at 100% cleanliness and will generate much more energy."); }
         if (next.status !== prev.status) {
           play(next.status === "won" ? "win" : next.status === "lost" ? "lose" : "milestone");
@@ -161,7 +197,7 @@ export function MarsGame() {
       const top = pickPrimary(list, primaryRef.current);
       if ((top?.id ?? null) !== primaryRef.current || (top?.level ?? null) !== primaryLevelRef.current) {
         primaryRef.current = top?.id ?? null; primaryLevelRef.current = top?.level ?? null; setPrimary(top);
-        if (top && top.level <= 2) { play(top.level === 1 ? "critical" : "alert", `${top.id}-${top.level}`); setPip(`⚠️ ${top.title}! ${top.action}`); }
+        if (top && top.level <= 2) { play(alertSoundFor(top), `${top.id}-${top.level}`); setPip(`⚠️ ${top.title}! ${top.action}`); }
         else if (top && top.level === 4 && top.id.startsWith("obj-")) play("objective");
       } else if (top) setPrimary(top);
       const bp = cur.broken ? stationPoint(BREAK_STATION[cur.broken]) : null;
@@ -175,8 +211,9 @@ export function MarsGame() {
       if (next.event && !prev.event) { placementRef.current = null; setPlacement(null); setBuildOpen(false); setFacilitiesOpen(false); play(next.event.kind === "meteor" ? "meteor" : next.event.kind === "malfunction" ? "malfunction" : "alert", "event"); setPip(`${EVENTS[next.event.kind].icon} ${EVENTS[next.event.kind].title}! We need to decide what to do.`); }
       const st = nearestStation(pos.current.x, pos.current.y, cur);
       setStation((o) => { if (o !== st) setOpen(false); return st; });
+      setMusicMood(musicMood(cur)); setAmbience(ambienceFor(cur, briefRef.current ? null : st));
     }, 200);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); setAmbience(null); setMusicMood("calm"); };
   }, [playing]);
 
   function reward(s: Sim): Sim {

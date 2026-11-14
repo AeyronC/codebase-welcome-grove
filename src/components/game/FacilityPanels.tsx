@@ -118,7 +118,7 @@ export function PlacementBar({ sim, compact, kind, x, y, onConfirm, onCancel }: 
         <span className="text-2xl">{d.icon}</span>
         <div className="min-w-0 flex-1">
           <div className="font-display font-bold">Place {d.name}</div>
-          <p className="text-xs text-hud-muted">Tap or click the map to move the preview. Green rings mark good spots.</p>
+          <p className="text-xs text-hud-muted">Tap or click the map to move the preview. Green dots mark good spots.</p>
         </div>
         <button data-sfx onClick={onCancel} aria-label="Cancel building placement" className="hud-btn rounded-lg bg-hud-ink/50 px-2 py-1">✕</button>
       </div>
