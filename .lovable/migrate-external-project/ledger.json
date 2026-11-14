@@ -1,0 +1,37 @@
+[
+ {
+  "capability": "code",
+  "source": "code archive (TanStack Start game)",
+  "outcome": "migrate",
+  "status": "verified",
+  "next_action": "none"
+ },
+ {
+  "capability": "schema/records",
+  "source": "none \u2014 progress saved in browser localStorage",
+  "outcome": "not applicable",
+  "status": "verified",
+  "next_action": "none"
+ },
+ {
+  "capability": "auth/users",
+  "source": "none",
+  "outcome": "not applicable",
+  "status": "verified",
+  "next_action": "none"
+ },
+ {
+  "capability": "external providers/secrets/endpoints/schedules",
+  "source": "none (Google Fonts link only)",
+  "outcome": "not applicable",
+  "status": "verified",
+  "next_action": "none"
+ },
+ {
+  "capability": "verification",
+  "source": "tests + preview",
+  "outcome": "verify",
+  "status": "verified",
+  "next_action": "none"
+ }
+]
