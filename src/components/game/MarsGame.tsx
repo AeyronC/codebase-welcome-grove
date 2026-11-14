@@ -9,7 +9,7 @@ import { canPlace, facilityName, stationForFacility, type BuildableKind, type Fa
 import { loadCharacter, loadSim, resetGame, saveCharacter, saveSim } from "@/game/storage";
 import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, type AudioSettings } from "@/game/sound";
 import { newFx, type Nav } from "@/game/fx";
-import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS } from "@/game/sim";
+import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
 import type { Character, Landmark } from "@/game/types";
 
 const WELCOME = "Welcome to Mars, astronaut! I'm PIP, your colony buddy. Let's explore our new home!";
@@ -133,6 +133,8 @@ export function MarsGame() {
         simRef.current = next; setSim(next);
         const completed = next.facilities.find((f) => f.built && f.remaining === 0 && prev.facilities.some((p) => p.id === f.id && p.remaining > 0));
         if (completed) { play("goal", `built-${completed.id}`); setToast({ id: ++toastN.current, text: `🏗️ ${facilityName(completed)} is ready!` }); setPip("Construction complete! The new facility is now connected to the base. Check the Facility Status panel."); }
+        const o2 = oxygenAlert(prev, next);
+        if (o2) { play(o2 === "critical" ? "critical" : "alert", `oxygen-${o2}`); setToast({ id: ++toastN.current, text: o2 === "critical" ? "🚨 Oxygen critical — 10% left!" : "🫧 Oxygen low — 20% left!" }); }
         if (prev.cleaning > 0 && next.cleaning === 0 && next.status === "day") { play("goal", "panels-clean"); setToast({ id: ++toastN.current, text: "✨ Solar panels fully clean — maximum efficiency!" }); setPip("Excellent cleaning! The panels are now at 100% cleanliness and will generate much more energy."); }
         if (next.status !== prev.status) {
           play(next.status === "won" ? "win" : next.status === "lost" ? "lose" : "milestone");
@@ -217,7 +219,15 @@ export function MarsGame() {
   const urgent = alertList.filter((x) => x.level <= 3);
   const beginSol = () => { const s = nextSol(sim); setSim(s); saveSim(s); setBanner((b) => b + 1); const i = EVENT_INFO[eventOf(s)]; setPip(`Sol ${s.sol}: ${i.label}! ${i.tip}`); };
   const goal = OBJECTIVES[sim.objective];
-  const restart = () => { const s = newSim(); toastRef.current = 0; setBriefing(true); setSim(s); saveSim(s); setPip(WELCOME); setBanner((b) => b + 1); };
+  /** Start a fresh mission: new simulation plus a remounted map so no position, alert, storm effect or open panel carries over. */
+  const restart = () => {
+    const s = newSim(); toastRef.current = 0; simRef.current = s; facilitiesRef.current = s.facilities;
+    fx.current = newFx(); nav.current = null; primaryRef.current = null; primaryLevelRef.current = null;
+    input.current = { x: 0, y: 0 }; speed.current = 1; placementRef.current = null; markers.current = [];
+    setPlacement(null); setPrimary(null); setStation(null); setOpen(false); setFacilitiesOpen(false); setBuildOpen(false);
+    setAlertsOpen(false); setLogOpen(""); setShowGoals(false); setToast(null); setFlash(null); setFound([]);
+    setRunId((r) => r + 1); setBriefing(true); setSim(s); saveSim(s); setPip(WELCOME); setBanner((b) => b + 1);
+  };
   const cancelPlacement = () => { placementRef.current = null; setPlacement(null); input.current = { x: 0, y: 0 }; };
   const chooseBuild = (kind: BuildableKind) => {
     let x = view.current.cx, y = view.current.cy, best = Number.POSITIVE_INFINITY;
@@ -235,7 +245,7 @@ export function MarsGame() {
   };
   const facilityList = facilityViews(sim);
   const res = [
-    { name: "Oxygen", icon: "🫧", value: (sim.oxygen / capacityOf(sim)) * 100, raw: sim.oxygen, cls: "bg-res-oxygen", low: 25 },
+    { name: "Oxygen", icon: "🫧", value: (sim.oxygen / capacityOf(sim)) * 100, raw: sim.oxygen, cls: "bg-res-oxygen", low: OXYGEN_LOW, inclusive: true },
     { name: "Water", icon: "💧", value: (sim.water / capacityOf(sim)) * 100, raw: sim.water, cls: "bg-res-water", low: 20 },
     { name: "Food", icon: "🥕", value: (sim.food / capacityOf(sim)) * 100, raw: sim.food, cls: "bg-res-food", low: 20 },
     { name: "Energy", icon: "⚡", value: sim.energy, cls: "bg-res-energy", low: 15 },
@@ -258,7 +268,7 @@ export function MarsGame() {
 
   return (
     <div className="game-root fixed inset-0 overflow-hidden">
-      <GameCanvas character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); } }} />
+      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); } }} />
       <div className="pointer-events-none absolute inset-0 p-2 text-hud-fg sm:p-3">
         <div className="flex items-start justify-between gap-2">
           <div className="hud-panel pointer-events-auto rounded-2xl px-3 py-2">
@@ -421,8 +431,8 @@ export function MarsGame() {
   );
 }
 
-function Res({ name, icon, value, raw, cls, low }: { name: string; icon: string; value: number; raw?: number; cls: string; low: number }) {
-  const v = Math.round(raw ?? value), w = Math.min(100, Math.round(value)), danger = value < low;
+function Res({ name, icon, value, raw, cls, low, inclusive }: { name: string; icon: string; value: number; raw?: number; cls: string; low: number; inclusive?: boolean }) {
+  const v = Math.round(raw ?? value), w = Math.min(100, Math.round(value)), danger = inclusive ? value <= low : value < low;
   return (
     <div className={`flex items-center gap-1 ${danger ? "animate-pulse" : ""}`} title={name}>
       <span className="text-sm">{icon}</span>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { report, act, checkAchievements, resolveEvent, checkObjective, DAY_SECONDS, newSim, nextSol, tick, capacityOf, shieldOf, facilityViews, researchCost, RATES, CLEANING_SECONDS, solarOutput, warnings } from "./sim";
+import { report, act, checkAchievements, resolveEvent, checkObjective, DAY_SECONDS, newSim, nextSol, tick, capacityOf, shieldOf, facilityViews, researchCost, RATES, CLEANING_SECONDS, solarOutput, warnings, oxygenAlert } from "./sim";
 import { canPlace, getDeco, type BuildableKind } from "./facilities";
 
 const runDay = (s = newSim()) => { for (let t = 0; t < DAY_SECONDS * 3 && s.status === "day"; t += 0.5) { if (s.event) s = resolveEvent(s, 1).sim; s = tick(s, 0.5); } return s; };
@@ -176,6 +176,20 @@ describe("solar cleaning and oxygen survival repairs", () => {
     expect(priorities({ ...newSim(), oxygen: 20 }).find((p) => p.id === "oxygen")?.level).toBe(2);
     expect(warnings({ ...newSim(), oxygen: 10 })).toContain("Critical oxygen");
     expect(priorities({ ...newSim(), oxygen: 10 }).find((p) => p.id === "oxygen")?.level).toBe(1);
+  });
+  it("oxygen alerts use tank percentage: with 130 capacity, 26 is low (20%) and 13 is critical (10%)", () => {
+    const big = { ...newSim(), capacity: 130 };
+    expect(warnings({ ...big, oxygen: 27 })).not.toContain("Low oxygen");
+    expect(warnings({ ...big, oxygen: 26 })).toContain("Low oxygen");
+    expect(warnings({ ...big, oxygen: 13 })).toContain("Critical oxygen");
+  });
+  it("oxygen alerts fire once when crossing 20% and 10%", () => {
+    const at = (oxygen: number) => ({ ...newSim(), oxygen });
+    expect(oxygenAlert(at(20.5), at(20))).toBe("low");
+    expect(oxygenAlert(at(20), at(19))).toBeNull();
+    expect(oxygenAlert(at(10.2), at(10))).toBe("critical");
+    expect(oxygenAlert(at(9), at(8))).toBeNull();
+    expect(oxygenAlert(at(5), at(0))).toBeNull();
   });
   it("crossing zero clamps oxygen and immediately locks further simulation and actions", () => {
     const s = tick({ ...newSim(), oxygen: 0.01, systems: { oxygen: false, greenhouse: false, drill: false } }, 1);

@@ -118,6 +118,18 @@ export const eventOf = (s: Sim) => SOL_EVENTS[s.sol - 1] ?? "clear";
 export const daylight = (time: number) => Math.max(0.1, Math.sin((Math.PI * time) / DAY_SECONDS));
 export const envRadiation = (e: EventKind) => (e === "flare" || e === "storm-flare" ? 5 : e === "dust" ? 0.8 : 1);
 
+/** Oxygen alerts use the share of current tank capacity, so bigger tanks don't hide a real 20% / 10% level. */
+export const OXYGEN_LOW = 20, OXYGEN_CRITICAL = 10;
+export const oxygenPercent = (s: Sim) => (s.oxygen / capacityOf(s)) * 100;
+/** Which oxygen alert (if any) was newly crossed between two simulation states. */
+export function oxygenAlert(prev: Sim, next: Sim): "low" | "critical" | null {
+  const a = oxygenPercent(prev), b = oxygenPercent(next);
+  if (next.oxygen <= 0) return null;
+  if (a > OXYGEN_CRITICAL && b <= OXYGEN_CRITICAL) return "critical";
+  if (a > OXYGEN_LOW && b <= OXYGEN_LOW) return "low";
+  return null;
+}
+
 /** One shared solar calculation: cleanliness changes real output, and cleaning adds a short recovery boost. */
 export function solarOutput(s: Sim, cleaningActive = s.cleaning > 0): number {
   const dustyWeather = weatherNow(s) === "dust" || weatherNow(s) === "storm-flare";
@@ -401,7 +413,8 @@ export function act(prev: Sim, id: string): { sim: Sim; msg: string } {
 
 export function warnings(s: Sim): string[] {
   const w: string[] = [];
-  if (s.oxygen <= 20) w.push(s.oxygen <= 0 ? "OUT OF OXYGEN!" : s.oxygen <= 10 ? "Critical oxygen" : "Low oxygen");
+  const o2 = oxygenPercent(s);
+  if (o2 <= OXYGEN_LOW) w.push(s.oxygen <= 0 ? "OUT OF OXYGEN!" : o2 <= OXYGEN_CRITICAL ? "Critical oxygen" : "Low oxygen");
   if (s.water < 20) w.push(s.water <= 0 ? "No water!" : "Low water");
   if (s.food < 20) w.push(s.food <= 0 ? "No food!" : "Low food");
   if (s.energy < 15) w.push("Power shortage");
@@ -615,7 +628,8 @@ export function priorities(s: Sim): Priority[] {
   const p: Priority[] = [], w = weatherNow(s);
   const add = (x: Priority) => p.push(x);
   const radStorm = w === "flare" || w === "storm-flare", dusty = w === "dust" || w === "storm-flare";
-  if (s.oxygen <= 20) add({ id: "oxygen", level: s.oxygen <= 10 ? 1 : 2, score: 100 - s.oxygen, icon: "🫧", title: s.oxygen <= 0 ? "Out of oxygen!" : s.oxygen <= 10 ? "Critical oxygen" : "Low oxygen", guide: s.oxygen <= 10 ? "Oxygen critical — restore life support now!" : "Check your life-support system!", why: "The crew can't breathe Mars air. At 0%, the mission ends immediately.", action: "Turn on the oxygen generator or fix life support in the Command Dome.", station: "dome" });
+  const o2 = oxygenPercent(s);
+  if (o2 <= OXYGEN_LOW) add({ id: "oxygen", level: o2 <= OXYGEN_CRITICAL ? 1 : 2, score: 100 - o2, icon: "🫧", title: s.oxygen <= 0 ? "Out of oxygen!" : o2 <= OXYGEN_CRITICAL ? "Critical oxygen" : "Low oxygen", guide: o2 <= OXYGEN_CRITICAL ? "Oxygen critical — restore life support now!" : "Check your life-support system!", why: "The crew can't breathe Mars air. At 0%, the mission ends immediately.", action: "Turn on the oxygen generator or fix life support in the Command Dome.", station: "dome" });
   if (s.exposure >= 80 || (radStorm && shieldOf(s) < 60 && s.exposure > 45)) add({ id: "radiation", level: 1, score: 50 + s.exposure, icon: "☢️", title: "Dangerous radiation", guide: "Improve your radiation protection!", why: "At 100 dose the base takes radiation damage.", action: "Upgrade shielding at the Radiation Shelter.", station: "shelter" });
   else if (radStorm && shieldOf(s) < 60) add({ id: "radiation", level: 2, score: 60 - s.shield, icon: "☢️", title: "Radiation storm", guide: "Improve your radiation protection!", why: "Radiation is 5x stronger right now and our shields are thin.", action: "Upgrade shielding at the Radiation Shelter.", station: "shelter" });
   else if (s.exposure > 60) add({ id: "radiation", level: 2, score: s.exposure - 40, icon: "☢️", title: "High radiation dose", guide: "Improve your radiation protection!", why: "Radiation keeps building up in the crew.", action: "Upgrade shielding at the Radiation Shelter.", station: "shelter" });
