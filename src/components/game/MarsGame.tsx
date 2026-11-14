@@ -142,7 +142,7 @@ export function MarsGame() {
     if (hudBottomRef.current) ro.observe(hudBottomRef.current);
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
-  });
+  }, [ready, playing, compact]);
   // Block pinch-zoom and double-tap zoom gestures that some phones still allow.
   useEffect(() => {
     const stop = (e: Event) => e.preventDefault();
@@ -303,55 +303,89 @@ export function MarsGame() {
   const evDef = sim.event ? EVENTS[sim.event.kind] : null;
   const off = sim.unpowered.length > 0;
 
+  const toggleFacilities = () => { play(facilitiesOpen ? "close" : "open"); setFacilitiesOpen((v) => !v); setBuildOpen(false); cancelPlacement(); setOpen(false); setMenuOpen(false); };
+  const toggleBuild = () => { play(buildOpen ? "close" : "open"); setBuildOpen((v) => !v); setFacilitiesOpen(false); cancelPlacement(); setOpen(false); setMenuOpen(false); };
+  const toggleMenu = () => { play(menuOpen ? "close" : "open"); setMenuOpen((v) => !v); setFacilitiesOpen(false); setBuildOpen(false); setOpen(false); };
+  const closeStation = () => { play("close"); setOpen(false); };
+  const sheetOpen = compact && (open || menuOpen);
+  const btn = "hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink";
+  const settingsBody = (
+    <div className={`mt-1.5 space-y-1.5 text-xs ${compact ? "w-full" : "w-60"}`}>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔇 Mute everything <input type="checkbox" className="size-5" checked={audio.muted} onChange={(e) => updAudio({ muted: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🎵 Background music <input type="checkbox" className="size-5" checked={audio.music} onChange={(e) => updAudio({ music: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🎚️ Music volume <input type="range" aria-label="Music volume" min={0} max={1} step={0.05} value={audio.musicVolume} onChange={(e) => updAudio({ musicVolume: Number(e.target.value) })} className="w-28" /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔔 Sound effects <input type="checkbox" className="size-5" checked={audio.sfx} onChange={(e) => updAudio({ sfx: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔉 Effects volume <input type="range" aria-label="Sound effects volume" min={0} max={1} step={0.05} value={audio.volume} onChange={(e) => updAudio({ volume: Number(e.target.value) })} className="w-28" /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🚨 Warning sounds <input type="checkbox" className="size-5" checked={audio.alerts} onChange={(e) => updAudio({ alerts: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🧭 Guide arrows <input type="checkbox" className="size-5" checked={audio.nav} onChange={(e) => updAudio({ nav: e.target.checked })} /></label>
+    </div>
+  );
+  const menuBody = (
+    <>
+      <div className="flex flex-wrap gap-1">
+        <button onClick={() => setLogOpen((v) => (v === "log" ? "" : "log"))} aria-pressed={logOpen === "log"} className={btn}>📜 Log</button>
+        <button onClick={() => setSettingsOpen((v) => !v)} aria-pressed={settingsOpen} aria-label="Sound and guidance settings" className={btn}>{audio.muted ? "🔇" : "🔊"}{compact && " Sound"}</button>
+        <button onClick={() => setLogOpen((v) => (v === "ach" ? "" : "ach"))} aria-pressed={logOpen === "ach"} className={btn}>⭐ {sim.achievements.length}/{ACHIEVEMENTS.length}</button>
+      </div>
+      {settingsOpen && settingsBody}
+      {logOpen === "log" && <ul className="hud-scroll mt-1 max-h-[40dvh] space-y-0.5 pr-1 text-xs">{sim.log.map((l, i) => <li key={i}><span className="text-hud-muted">S{l.sol}</span> {l.icon} {l.text}</li>)}</ul>}
+      {logOpen === "ach" && <ul className="hud-scroll mt-1 max-h-[40dvh] space-y-0.5 text-xs">{ACHIEVEMENTS.map((a) => { const got = sim.achievements.includes(a.id); return <li key={a.id} className={got ? "font-bold text-accent" : "text-hud-muted"}>{got ? a.icon : "🔒"} {a.title}</li>; })}</ul>}
+      <button onClick={() => { resetGame(); setPlaying(false); setMenuOpen(false); }} className="mt-1.5 min-h-8 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
+    </>
+  );
+  const onClickCapture = (e: React.MouseEvent) => {
+    const b = (e.target as HTMLElement).closest("button");
+    if (b && !b.disabled && !b.hasAttribute("data-sfx")) play("click");
+  };
+
   return (
-    <div className="game-root fixed inset-0 overflow-hidden">
-      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); } }} />
-      <div className="pointer-events-none absolute inset-0 p-2 text-hud-fg sm:p-3">
+    <div ref={rootRef} onClickCapture={onClickCapture} className="game-root fixed inset-0 overflow-hidden">
+      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); setMenuOpen(false); } }} />
+      <div className="hud-safe pointer-events-none absolute inset-0 text-hud-fg">
+        <div ref={hudTopRef}>
         <div className="flex items-start justify-between gap-2">
-          <div className="hud-panel pointer-events-auto rounded-2xl px-3 py-2">
-            <div className="font-display text-base font-bold leading-tight sm:text-xl">🪐 Mars Base Buddies</div>
+          <div className={`hud-panel pointer-events-auto shrink-0 rounded-2xl ${compact ? "px-2 py-1.5" : "hud-scroll max-h-[calc(100dvh-1rem)] px-3 py-2"}`}>
+            {!compact && <div className="font-display text-base font-bold leading-tight sm:text-xl">🪐 Mars Base Buddies</div>}
             <div className="flex items-center gap-2 text-xs sm:text-sm">
               <span className="whitespace-nowrap rounded-full bg-primary px-2 font-bold text-primary-foreground">SOL {sim.sol}/{MAX_SOL}</span>
-              <span className="whitespace-nowrap" title={info.tip}>{info.icon} {info.label}</span>
+              <span className="whitespace-nowrap" title={info.tip}>{info.icon}{!compact && ` ${info.label}`}</span>
             </div>
             <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hud-ink/60" title="Time of day"><div className="h-full bg-accent" style={{ width: `${(sim.time / DAY_SECONDS) * 100}%` }} /></div>
-            <button onClick={() => { resetGame(); setPlaying(false); }} className="mt-1 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
-            <div className="mt-1 flex gap-1">
-              <button onClick={() => setLogOpen((v) => (v === "log" ? "" : "log"))} className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">📜 Log</button>
-              <button onClick={() => setSettingsOpen((v) => !v)} aria-label="Sound and guidance settings" className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">{audio.muted ? "🔇" : "🔊"}</button>
-              <button onClick={() => setLogOpen((v) => (v === "ach" ? "" : "ach"))} className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">⭐ {sim.achievements.length}/{ACHIEVEMENTS.length}</button>
+            <div className="mt-1.5 flex gap-1">
+              {compact && <button data-sfx onClick={toggleMenu} aria-label="Menu, log and sound settings" aria-expanded={menuOpen} className={`${btn} text-base`}>☰</button>}
+              <button data-sfx onClick={toggleFacilities} aria-label="Open facility status monitor" aria-expanded={facilitiesOpen} className={`${btn} ${compact ? "text-base" : ""}`}>🏢{!compact && " Facilities"}</button>
+              <button data-sfx onClick={toggleBuild} aria-label="Build a new facility" aria-expanded={buildOpen} className={`hud-btn start-btn rounded-lg px-2.5 py-1 text-xs font-bold ${compact ? "text-sm" : ""}`}>🔨{compact ? "" : " BUILD"}</button>
             </div>
-            <div className="mt-1 flex gap-1">
-              <button onClick={() => { setFacilitiesOpen((v) => !v); setBuildOpen(false); cancelPlacement(); setOpen(false); }} aria-label="Open facility status monitor" className="rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink">🏢 Facilities</button>
-              <button onClick={() => { setBuildOpen((v) => !v); setFacilitiesOpen(false); cancelPlacement(); setOpen(false); }} className="start-btn rounded-lg px-2.5 py-1 text-xs font-bold">🔨 BUILD</button>
-            </div>
-            {settingsOpen && (
-              <div className="mt-1 w-56 space-y-1 text-xs">
-                <label className="flex items-center justify-between gap-2">🔇 Mute all <input type="checkbox" checked={audio.muted} onChange={(e) => updAudio({ muted: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🎵 Sound effects <input type="checkbox" checked={audio.sfx} onChange={(e) => updAudio({ sfx: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🚨 Alert sounds <input type="checkbox" checked={audio.alerts} onChange={(e) => updAudio({ alerts: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🔉 Volume <input type="range" min={0} max={1} step={0.1} value={audio.volume} onChange={(e) => updAudio({ volume: Number(e.target.value) })} className="w-24" /></label>
-                <label className="flex items-center justify-between gap-2">🧭 Guide arrows <input type="checkbox" checked={audio.nav} onChange={(e) => updAudio({ nav: e.target.checked })} /></label>
-              </div>
-            )}
-            {logOpen === "log" && <ul className="mt-1 max-h-[40vh] w-64 space-y-0.5 overflow-y-auto pr-1 text-xs">{sim.log.map((l, i) => <li key={i}><span className="text-hud-muted">S{l.sol}</span> {l.icon} {l.text}</li>)}</ul>}
-            {logOpen === "ach" && <ul className="mt-1 max-h-[40vh] w-64 space-y-0.5 overflow-y-auto text-xs">{ACHIEVEMENTS.map((a) => { const got = sim.achievements.includes(a.id); return <li key={a.id} className={got ? "font-bold text-accent" : "text-hud-muted"}>{got ? a.icon : "🔒"} {a.title}</li>; })}</ul>}
+            {!compact && <div className="mt-1.5">{menuBody}</div>}
           </div>
           <div className="hud-panel order-last hidden flex-wrap items-center gap-3 rounded-2xl px-3 py-2 lg:flex lg:order-none">{resBar}</div>
-          <div className="hud-panel w-[min(48vw,26rem)] shrink-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-accent sm:text-xs">🎯 Mission</div>
-            <button onClick={() => setShowGoals((v) => !v)} className="pointer-events-auto mt-1 block w-full text-left">
-              <div className="font-display text-base font-bold leading-snug sm:text-lg md:text-xl">{goal ? goal.title : "All objectives complete! 🏆"}</div>
-              {goal && <div className="mt-1 text-xs leading-snug text-hud-muted sm:text-sm">{goal.hint}</div>}
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food transition-all" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>
-              <div className="mt-1.5 text-xs text-hud-muted sm:text-sm">Objectives {sim.objective}/{OBJECTIVES.length} · Places {found.length}/{LANDMARKS.length} · 🔍 {sim.discoveries.length} <span className="underline">{showGoals ? "hide" : "list"}</span></div>
-            </button>
-            {showGoals && <ol className="mt-2 max-h-[40vh] space-y-1 overflow-y-auto border-t border-hud-fg/15 pt-2 text-xs sm:text-sm">{OBJECTIVES.map((o, i) => <li key={o.title} className={i < sim.objective ? "text-res-food" : i === sim.objective ? "font-bold" : "text-hud-muted"}>{i < sim.objective ? "✅" : i === sim.objective ? "▶️" : "🔒"} {o.title}</li>)}</ol>}
-            {sim.broken && <div className="mt-2 text-xs sm:text-sm font-bold text-destructive">🔧 Broken: {BREAK_NAMES[sim.broken]}</div>}
-            {off && <div className="mt-2 text-xs sm:text-sm font-bold text-destructive">⚡ No power: {sim.unpowered.join(", ")}</div>}
+          <div className={`hud-panel pointer-events-auto rounded-2xl ${compact ? "min-w-0 max-w-[24rem] flex-1 px-2.5 py-1.5" : "w-[min(48vw,26rem)] shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]"}`}>
+            {compact ? (
+              <button onClick={() => setMissionOpen((v) => !v)} aria-expanded={missionOpen} aria-label="Mission details" className="flex min-h-9 w-full min-w-0 items-center gap-1.5 text-left">
+                <span className="shrink-0 text-sm">🎯</span>
+                <span className="min-w-0 flex-1 truncate font-display text-sm font-bold leading-tight">{goal ? goal.title : "All objectives complete! 🏆"}</span>
+                <span className="shrink-0 text-[10px] text-hud-muted">{sim.objective}/{OBJECTIVES.length} {missionOpen ? "▲" : "▼"}</span>
+              </button>
+            ) : (
+              <div className="text-[11px] font-bold uppercase tracking-widest text-accent sm:text-xs">🎯 Mission</div>
+            )}
+            {(!compact || missionOpen) && (
+              <div className={compact ? "hud-scroll max-h-[45dvh]" : ""}>
+                <button onClick={() => setShowGoals((v) => !v)} className="mt-1 block w-full text-left">
+                  {!compact && <div className="font-display text-base font-bold leading-snug sm:text-lg md:text-xl">{goal ? goal.title : "All objectives complete! 🏆"}</div>}
+                  {goal && <div className="mt-1 text-xs leading-snug text-hud-muted sm:text-sm">{goal.hint}</div>}
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food transition-all" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>
+                  <div className="mt-1.5 text-xs text-hud-muted sm:text-sm">Objectives {sim.objective}/{OBJECTIVES.length} · Places {found.length}/{LANDMARKS.length} · 🔍 {sim.discoveries.length} <span className="underline">{showGoals ? "hide" : "list"}</span></div>
+                </button>
+                {showGoals && <ol className="hud-scroll mt-2 max-h-[40dvh] space-y-1 border-t border-hud-fg/15 pt-2 text-xs sm:text-sm">{OBJECTIVES.map((o, i) => <li key={o.title} className={i < sim.objective ? "text-res-food" : i === sim.objective ? "font-bold" : "text-hud-muted"}>{i < sim.objective ? "✅" : i === sim.objective ? "▶️" : "🔒"} {o.title}</li>)}</ol>}
+              </div>
+            )}
+            {compact && !missionOpen && <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>}
+            {sim.broken && <div className="mt-1.5 text-xs font-bold text-destructive sm:text-sm">🔧 Broken: {BREAK_NAMES[sim.broken]}</div>}
+            {off && <div className="mt-1.5 text-xs font-bold text-destructive sm:text-sm">⚡ No power: {sim.unpowered.join(", ")}</div>}
           </div>
         </div>
-        <div className="hud-panel mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden">{resBar}</div>
+        <div className="hud-panel pointer-events-auto mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden" aria-label="Base supplies">{resBar}</div>
         {sim.status === "day" && !briefing && (primary || alertList.length > 0) && (
           <div className="mx-auto mt-2 w-fit max-w-[min(94vw,30rem)]">
             {primary && (
