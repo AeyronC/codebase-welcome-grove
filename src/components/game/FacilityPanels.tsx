@@ -10,7 +10,7 @@ const STATUS_CLASS: Record<FacilityView["status"], string> = {
 };
 
 /** Small screens: panels become a bottom sheet that never covers the top status bar and scrolls when long. */
-export const SHEET = "hud-panel hud-scroll pointer-events-auto absolute inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] mx-auto max-w-[520px] max-h-[calc(100dvh-var(--hud-top,8rem)-1rem)] rounded-2xl p-3";
+export const SHEET = "hud-panel hud-scroll pointer-events-auto absolute inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] mx-auto max-w-[520px] max-h-[max(55dvh,calc(100dvh-var(--hud-top,8rem)-1rem))] rounded-2xl p-3";
 
 export function FacilityPanel({ facilities, compact, onClose, onToggle, onRepair }: {
   facilities: FacilityView[];

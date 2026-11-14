@@ -9,7 +9,7 @@ import { canPlace, facilityName, stationForFacility, type BuildableKind, type Fa
 import { loadCharacter, loadSim, resetGame, saveCharacter, saveSim } from "@/game/storage";
 import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, setAmbience, setMusicMood, type AudioSettings } from "@/game/sound";
 import { alertSoundFor, ambienceFor, musicMood } from "@/game/audioRules";
-import { useCompact } from "@/hooks/use-compact";
+import { useCompact, useShortLandscape } from "@/hooks/use-compact";
 import { newFx, type Nav } from "@/game/fx";
 import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
 import type { Character, Landmark } from "@/game/types";
@@ -119,7 +119,7 @@ export function MarsGame() {
   const updAudio = (p: Partial<AudioSettings>) => { setSettings(p); setAudio(getSettings()); };
   useEffect(() => { unlockAudio(); }, []);
   const [logOpen, setLogOpen] = useState<"" | "log" | "ach">("");
-  const compact = useCompact();
+  const compact = useCompact(), short = useShortLandscape();
   const [menuOpen, setMenuOpen] = useState(false);
   const [missionOpen, setMissionOpen] = useState(false);
   const [pipMin, setPipMin] = useState(false);
@@ -308,6 +308,7 @@ export function MarsGame() {
   const toggleMenu = () => { play(menuOpen ? "close" : "open"); setMenuOpen((v) => !v); setFacilitiesOpen(false); setBuildOpen(false); setOpen(false); };
   const closeStation = () => { play("close"); setOpen(false); };
   const sheetOpen = compact && (open || menuOpen);
+  const anyPanel = open || menuOpen || facilitiesOpen || buildOpen || !!placement;
   const btn = "hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink";
   const settingsBody = (
     <div className={`mt-1.5 space-y-1.5 text-xs ${compact ? "w-full" : "w-60"}`}>
@@ -333,6 +334,7 @@ export function MarsGame() {
       <button onClick={() => { resetGame(); setPlaying(false); setMenuOpen(false); }} className="mt-1.5 min-h-8 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
     </>
   );
+  if (compact && alertsOpen && anyPanel) setTimeout(() => setAlertsOpen(false));
   const onClickCapture = (e: React.MouseEvent) => {
     const b = (e.target as HTMLElement).closest("button");
     if (b && !b.disabled && !b.hasAttribute("data-sfx")) play("click");
@@ -358,8 +360,8 @@ export function MarsGame() {
             </div>
             {!compact && <div className="mt-1.5">{menuBody}</div>}
           </div>
-          <div className="hud-panel order-last hidden flex-wrap items-center gap-3 rounded-2xl px-3 py-2 lg:flex lg:order-none">{resBar}</div>
-          <div className={`hud-panel pointer-events-auto rounded-2xl ${compact ? "min-w-0 max-w-[24rem] flex-1 px-2.5 py-1.5" : "w-[min(48vw,26rem)] shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]"}`}>
+          <div className={`hud-panel min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-2 ${short ? "flex flex-1" : "hidden lg:flex"}`} aria-label="Base supplies">{resBar}</div>
+          <div className={`hud-panel pointer-events-auto rounded-2xl ${short ? "w-56 shrink-0 px-2.5 py-1.5" : compact ? "min-w-0 max-w-[24rem] flex-1 px-2.5 py-1.5" : "w-[min(48vw,26rem)] shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]"}`}>
             {compact ? (
               <button onClick={() => setMissionOpen((v) => !v)} aria-expanded={missionOpen} aria-label="Mission details" className="flex min-h-9 w-full min-w-0 items-center gap-1.5 text-left">
                 <span className="shrink-0 text-sm">🎯</span>
@@ -385,7 +387,8 @@ export function MarsGame() {
             {off && <div className="mt-1.5 text-xs font-bold text-destructive sm:text-sm">⚡ No power: {sim.unpowered.join(", ")}</div>}
           </div>
         </div>
-        <div className="hud-panel pointer-events-auto mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden" aria-label="Base supplies">{resBar}</div>
+        {!short && <div className="hud-panel pointer-events-auto mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden" aria-label="Base supplies">{resBar}</div>}
+        </div>
         {sim.status === "day" && !briefing && (primary || alertList.length > 0) && (
           <div className="mx-auto mt-2 w-fit max-w-[min(94vw,30rem)]">
             {primary && (
@@ -408,7 +411,6 @@ export function MarsGame() {
             )}
           </div>
         )}
-        </div>
 
         {sim.status === "day" && banner > 0 && (
           <div key={banner} className="sol-banner absolute inset-x-0 top-1/3 text-center">
