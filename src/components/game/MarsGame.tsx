@@ -128,6 +128,8 @@ export function MarsGame() {
   const hudBottomRef = useRef<HTMLDivElement>(null);
   const hud = useRef({ top: 120, bottom: 600 });
   useEffect(() => { setPipMin(false); }, [pip]);
+  // On phones, opening a management panel folds the alert list away so the panel gets the room.
+  useEffect(() => { if (compact && (open || menuOpen || facilitiesOpen || buildOpen || placement)) setAlertsOpen(false); }, [compact, open, menuOpen, facilitiesOpen, buildOpen, placement]);
   // Track the space the top status bar and bottom controls take, so panels and buttons never overlap them.
   useEffect(() => {
     const measure = () => {
@@ -308,7 +310,6 @@ export function MarsGame() {
   const toggleMenu = () => { play(menuOpen ? "close" : "open"); setMenuOpen((v) => !v); setFacilitiesOpen(false); setBuildOpen(false); setOpen(false); };
   const closeStation = () => { play("close"); setOpen(false); };
   const sheetOpen = compact && (open || menuOpen);
-  const anyPanel = open || menuOpen || facilitiesOpen || buildOpen || !!placement;
   const btn = "hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink";
   const settingsBody = (
     <div className={`mt-1.5 space-y-1.5 text-xs ${compact ? "w-full" : "w-60"}`}>
@@ -334,7 +335,6 @@ export function MarsGame() {
       <button onClick={() => { resetGame(); setPlaying(false); setMenuOpen(false); }} className="mt-1.5 min-h-8 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
     </>
   );
-  if (compact && alertsOpen && anyPanel) setTimeout(() => setAlertsOpen(false));
   const onClickCapture = (e: React.MouseEvent) => {
     const b = (e.target as HTMLElement).closest("button");
     if (b && !b.disabled && !b.hasAttribute("data-sfx")) play("click");
