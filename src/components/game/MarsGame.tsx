@@ -207,7 +207,7 @@ export function MarsGame() {
       if (cur.event?.kind === "meteor" && !fx.current.meteor) { const mp = stationPoint(BREAK_STATION[cur.event.target ?? "drill"]); if (mp) fx.current.meteor = { id: ++meteorN.current, x: mp.x, y: mp.y, impact: false }; }
       const tp = top?.station ? targetPoint(top.station, pos.current) : null;
       const nearT = top?.station && nearestStation(pos.current.x, pos.current.y, cur) === top.station;
-      nav.current = getSettings().nav && tp && top && !nearT && !cur.event ? { x: tp.x, y: tp.top + 20, label: `${top.icon} ${top.guide}`, level: top.level } : null;
+      nav.current = getSettings().nav && tp && top && !nearT && !cur.event ? { x: tp.x, y: tp.top + 20, label: `${top.icon} ${top.guide}`, level: top.level, top: hud.current.top + 40, bottom: hud.current.bottom - 40 } : null;
       if (next.event && !prev.event) { placementRef.current = null; setPlacement(null); setBuildOpen(false); setFacilitiesOpen(false); play(next.event.kind === "meteor" ? "meteor" : next.event.kind === "malfunction" ? "malfunction" : "alert", "event"); setPip(`${EVENTS[next.event.kind].icon} ${EVENTS[next.event.kind].title}! We need to decide what to do.`); }
       const st = nearestStation(pos.current.x, pos.current.y, cur);
       setStation((o) => { if (o !== st) setOpen(false); return st; });
@@ -352,9 +352,9 @@ export function MarsGame() {
             </div>
             <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hud-ink/60" title="Time of day"><div className="h-full bg-accent" style={{ width: `${(sim.time / DAY_SECONDS) * 100}%` }} /></div>
             <div className="mt-1.5 flex gap-1">
-              {compact && <button data-sfx onClick={toggleMenu} aria-label="Menu, log and sound settings" aria-expanded={menuOpen} className={`${btn} text-base`}>☰</button>}
-              <button data-sfx onClick={toggleFacilities} aria-label="Open facility status monitor" aria-expanded={facilitiesOpen} className={`${btn} ${compact ? "text-base" : ""}`}>🏢{!compact && " Facilities"}</button>
-              <button data-sfx onClick={toggleBuild} aria-label="Build a new facility" aria-expanded={buildOpen} className={`hud-btn start-btn rounded-lg px-2.5 py-1 text-xs font-bold ${compact ? "text-sm" : ""}`}>🔨{compact ? "" : " BUILD"}</button>
+              {compact && <button data-sfx onClick={toggleMenu} aria-label="Menu, log and sound settings" aria-expanded={menuOpen} className={`${btn} text-lg`}>☰</button>}
+              <button data-sfx onClick={toggleFacilities} aria-label="Open facility status monitor" aria-expanded={facilitiesOpen} className={`${btn} ${compact ? "text-lg" : ""}`}>🏢{!compact && " Facilities"}</button>
+              <button data-sfx onClick={toggleBuild} aria-label="Build a new facility" aria-expanded={buildOpen} className={`hud-btn start-btn rounded-lg px-2.5 py-1 text-xs font-bold ${compact ? "text-lg" : ""}`}>🔨{compact ? "" : " BUILD"}</button>
             </div>
             {!compact && <div className="mt-1.5">{menuBody}</div>}
           </div>

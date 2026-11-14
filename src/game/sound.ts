@@ -257,5 +257,5 @@ export function setAmbience(a: Ambience | null) {
 
 /* ---------------- Debug view (used by automated checks) ---------------- */
 let lastAlert: { kind: AlertKind; result: string } | null = null;
-export const audioDebug = () => ({ state: ctx?.state ?? "none", unlocked, music: !!musicTimer, mood, facilities: amb ? [...amb.facility.entries()].filter(([, l]) => !l.stopAt).map(([k]) => k) : [], lastAlert, buses: buses ? Object.fromEntries(Object.entries(buses).map(([k, g]) => [k, Number(g.gain.value.toFixed(2))])) : null });
+export const audioDebug = () => ({ state: ctx?.state ?? "none", unlocked, music: !!musicTimer, mood, facilities: amb ? [...amb.facility.entries()].filter(([, l]) => !l.stopAt).map(([k]) => k) : [], lastAlert, targets: Object.fromEntries((['music', 'sfx', 'alert', 'ambience'] as Channel[]).map((k) => [k, channelGain(settings, k)])) });
 if (typeof window !== "undefined") (window as unknown as { __mbbAudio?: typeof audioDebug }).__mbbAudio = audioDebug;
