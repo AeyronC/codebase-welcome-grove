@@ -158,19 +158,19 @@ function voice(c: AudioContext, f: number, type: OscillatorType, t: number, a: n
 function scheduleBar(c: AudioContext, t0: number): number {
   if (bar % 2 === 0) mood = wantMood; // mood only changes on a chord change, so it stays musical
   const tense = mood === "tense", beat = 60 / (tense ? 92 : 68), len = beat * 4, m = musicGraph(c);
-  const chord = (tense ? TENSE : CALM)[Math.floor(bar / 2) % 4];
+  const chord = (tense ? TENSE : CALM)[Math.floor(bar / 2) % 4]!;
   m.pad.frequency.setTargetAtTime(tense ? 750 : 1400, t0, 1.5);
   if (bar % 2 === 0) for (const n of chord.slice(0, 4)) { // pad crossfades into the next chord: no gaps
     voice(c, hz(n), "triangle", t0, 1.4, len * 2 - 1.4, 2.2, 0.035, m.pad, -6);
     voice(c, hz(n), "sine", t0, 1.4, len * 2 - 1.4, 2.2, 0.03, m.pad, 7);
   }
-  voice(c, hz(chord[0] - 12), "sine", t0, 0.08, len * 0.6, 0.8, 0.09, m.pad);
-  if (tense) for (let b = 0; b < 4; b++) voice(c, hz(chord[0] - 24), "sawtooth", t0 + b * beat, 0.01, 0.05, 0.25, 0.05, m.pad);
+  voice(c, hz(chord[0]! - 12), "sine", t0, 0.08, len * 0.6, 0.8, 0.09, m.pad);
+  if (tense) for (let b = 0; b < 4; b++) voice(c, hz(chord[0]! - 24), "sawtooth", t0 + b * beat, 0.01, 0.05, 0.25, 0.05, m.pad);
   const steps = tense ? 16 : 8, step = len / steps, seed = bar * 7919;
   for (let i = 0; i < steps; i++) {
     const r = ((seed + i * 104729) % 97) / 97;
     if (r > (tense ? 0.55 : 0.6)) continue; // leave space so it stays calm and not distracting
-    const n = chord[(i * (tense ? 3 : 2) + bar) % chord.length] + 12;
+    const n = chord[(i * (tense ? 3 : 2) + bar) % chord.length]! + 12;
     voice(c, hz(n), tense ? "triangle" : "sine", t0 + i * step, 0.01, 0.05, tense ? 0.25 : 0.6, tense ? 0.035 : 0.045, m.arp);
   }
   bar++; return len;
@@ -227,7 +227,7 @@ function facilityLoop(c: AudioContext, k: FacilitySound): Loop {
     if (next < t) next = t;
     while (next < t + 0.4) {
       if (k === "greenhouse") blip(c, loop.gain, next, 300 + Math.random() * 300, 700 + Math.random() * 500, 0.06, "sine", 0.05);
-      else blip(c, loop.gain, next, [1200, 1600, 2000, 2400][Math.floor(Math.random() * 4)], 1500, 0.05, "square", 0.012);
+      else blip(c, loop.gain, next, [1200, 1600, 2000, 2400][Math.floor(Math.random() * 4)] ?? 1600, 1500, 0.05, "square", 0.012);
       next += k === "greenhouse" ? 0.18 + Math.random() * 0.5 : 0.12 + Math.random() * 0.4;
     }
   };

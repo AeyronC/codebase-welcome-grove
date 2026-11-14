@@ -9,7 +9,7 @@ export const DEFAULT_AUDIO: AudioSettings = { muted: false, music: true, sfx: tr
 const vol = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : d);
 const bool = (v: unknown, d: boolean) => (typeof v === "boolean" ? v : d);
 export function normalizeSettings(raw: unknown): AudioSettings {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>, d = DEFAULT_AUDIO;
+  const r = (raw && typeof raw === "object" ? raw : {}) as Partial<Record<keyof AudioSettings, unknown>>, d = DEFAULT_AUDIO;
   return { muted: bool(r.muted, d.muted), music: bool(r.music, d.music), sfx: bool(r.sfx, d.sfx), alerts: bool(r.alerts, d.alerts),
     musicVolume: vol(r.musicVolume, d.musicVolume), volume: vol(r.volume, d.volume), nav: bool(r.nav, d.nav) };
 }
