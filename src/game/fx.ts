@@ -1,6 +1,6 @@
 /** Disaster effects + navigation arrow drawn on the game canvas. */
 export interface Fx { weather: "clear" | "dust" | "flare" | "storm-flare"; approaching: "dust" | "radiation" | null; broken: { x: number; y: number } | null; meteor: { id: number; x: number; y: number; impact: boolean } | null }
-export interface Nav { x: number; y: number; label: string; level: number }
+export interface Nav { x: number; y: number; label: string; level: number; top?: number; bottom?: number }
 export const newFx = (): Fx => ({ weather: "clear", approaching: null, broken: null, meteor: null });
 const COLORS = ["#ef4444", "#ef4444", "#fb923c", "#facc15", "#22d3ee"];
 
@@ -70,7 +70,7 @@ export function drawScreenFx(ctx: CanvasRenderingContext2D, fx: Fx, t: number, v
 
 export function drawNav(ctx: CanvasRenderingContext2D, nav: Nav, t: number, vw: number, vh: number, toScreen: (x: number, y: number) => [number, number], player: [number, number]) {
   const [sx, sy] = toScreen(nav.x, nav.y), c: string = COLORS[nav.level] ?? "#22d3ee", pulse = 0.5 + Math.sin(t * 5) * 0.5;
-  const top = vh < 640 ? 150 : 175, bottom = vh - 130, m = 40;
+  const top = nav.top ?? (vh < 640 ? 150 : 175), bottom = Math.max(top + 60, nav.bottom ?? vh - 130), m = 40;
   const onScreen = sx > m && sx < vw - m && sy > top && sy < bottom;
   ctx.save(); ctx.shadowColor = c; ctx.shadowBlur = 12 + pulse * 14; ctx.fillStyle = c; ctx.strokeStyle = "#1e1b3a"; ctx.lineWidth = 3;
   const arrow = (x: number, y: number, ang: number, size: number) => {

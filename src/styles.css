@@ -205,3 +205,20 @@ html, body { margin: 0; width: 100vw; height: 100vh; height: 100dvh; overflow: h
 @keyframes panel-fail { 20%, 60% { transform: translateX(calc(-50% - 6px)); box-shadow: 0 0 0 4px var(--destructive); } 40%, 80% { transform: translateX(calc(-50% + 6px)); } }
 .event-pop { animation: event-pop 0.45s cubic-bezier(.2,1.6,.4,1); }
 @keyframes event-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.6) rotate(-4deg); } }
+
+/* ---------- Mobile & touch ---------- */
+html, body { position: fixed; inset: 0; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+.game-root { touch-action: manipulation; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+.game-root canvas { touch-action: none; }
+.game-root button { touch-action: manipulation; }
+.hud-scroll { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.hud-safe { padding: max(0.5rem, env(safe-area-inset-top)) max(0.5rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.5rem, env(safe-area-inset-left)); }
+.joystick { width: clamp(104px, 30vmin, 150px); height: clamp(104px, 30vmin, 150px); }
+.hud-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem; }
+@media (pointer: coarse) {
+  /* Comfortable finger-sized targets */
+  .hud-btn { min-height: 44px; min-width: 44px; }
+  /* Blur behind panels is expensive on phones while the map animates; use a slightly more solid panel instead */
+  .hud-panel { backdrop-filter: none; background: oklch(0.22 0.09 285 / 0.9); }
+}
+@media (prefers-reduced-motion: reduce) { .pip-text, .event-pop, .panel-ok, .panel-fail { animation-duration: 0.01s; } }

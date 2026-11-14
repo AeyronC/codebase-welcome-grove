@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { GameCanvas, type InputState, type PlacementCursor } from "./GameCanvas";
-import { BuildMenu, FacilityPanel, PlacementBar } from "./FacilityPanels";
+import { BuildMenu, FacilityPanel, PlacementBar, SHEET } from "./FacilityPanels";
 import { Joystick } from "./Joystick";
 import { PipPortrait } from "./Pip";
 import { CharacterSelect } from "./CharacterSelect";
 import { BUILDINGS, LANDMARKS } from "@/game/world";
 import { canPlace, facilityName, stationForFacility, type BuildableKind, type Facility } from "@/game/facilities";
 import { loadCharacter, loadSim, resetGame, saveCharacter, saveSim } from "@/game/storage";
-import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, type AudioSettings } from "@/game/sound";
+import { beep, play, soundForAction, unlockAudio, getSettings, setSettings, setAmbience, setMusicMood, type AudioSettings } from "@/game/sound";
+import { alertSoundFor, ambienceFor, musicMood } from "@/game/audioRules";
+import { useCompact, useShortLandscape } from "@/hooks/use-compact";
 import { newFx, type Nav } from "@/game/fx";
 import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
 import type { Character, Landmark } from "@/game/types";
@@ -47,7 +49,7 @@ function hitStation(x: number, y: number, st: string, s: Sim): boolean {
   return s.facilities.some((b) => b.remaining <= 0 && stationForFacility(b.kind) === st && x > b.x - 20 && x < b.x + b.w + 20 && y > b.y - 40 && y < b.y + b.h + 20);
 }
 
-function FacilityButton({ station, view, facilities, pos, label, onOpen }: { station: string; view: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; facilities: React.MutableRefObject<Facility[]>; pos: React.MutableRefObject<{ x: number; y: number }>; label: React.ReactNode; onOpen: () => void }) {
+function FacilityButton({ station, view, facilities, pos, hud, label, onOpen }: { station: string; view: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; facilities: React.MutableRefObject<Facility[]>; pos: React.MutableRefObject<{ x: number; y: number }>; hud: React.MutableRefObject<{ top: number; bottom: number }>; label: React.ReactNode; onOpen: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     let raf = 0;
@@ -58,16 +60,17 @@ function FacilityButton({ station, view, facilities, pos, label, onOpen }: { sta
         const sx = vw / 2 + (p.x - v.cx) * v.zoom, sy = vh / 2 + (p.top - v.cy) * v.zoom;
         const w = el.offsetWidth, h = el.offsetHeight;
         const x = Math.max(8, Math.min(vw - w - 8, sx - w / 2));
-        const y = Math.max(vh * 0.28, Math.min(vh - h - 150, sy - h));
+        const lo = hud.current.top + 8, hi = Math.max(lo, hud.current.bottom - h - 8);
+        const y = Math.max(lo, Math.min(hi, sy - h));
         el.style.transform = `translate(${x}px, ${y}px)`;
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [station, view, facilities, pos]);
+  }, [station, view, facilities, pos, hud]);
   return (
-    <button ref={ref} onClick={onOpen} className="hud-panel start-btn pointer-events-auto absolute left-0 top-0 z-10 flex items-center gap-2 rounded-2xl px-5 py-3 text-base font-bold sm:text-lg" style={{ transform: "translate(-9999px,0)" }}>
+    <button data-sfx ref={ref} onClick={onOpen} className="hud-panel start-btn pointer-events-auto absolute left-0 top-0 z-10 flex max-w-[80vw] items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold sm:px-5 sm:py-3 sm:text-lg" style={{ transform: "translate(-9999px,0)" }}>
       {label}
     </button>
   );
@@ -116,6 +119,40 @@ export function MarsGame() {
   const updAudio = (p: Partial<AudioSettings>) => { setSettings(p); setAudio(getSettings()); };
   useEffect(() => { unlockAudio(); }, []);
   const [logOpen, setLogOpen] = useState<"" | "log" | "ach">("");
+  const compact = useCompact(), short = useShortLandscape();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [missionOpen, setMissionOpen] = useState(false);
+  const [pipMin, setPipMin] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const hudTopRef = useRef<HTMLDivElement>(null);
+  const hudBottomRef = useRef<HTMLDivElement>(null);
+  const hud = useRef({ top: 120, bottom: 600 });
+  useEffect(() => { setPipMin(false); }, [pip]);
+  // On phones, opening a management panel folds the alert list away so the panel gets the room.
+  useEffect(() => { if (compact && (open || menuOpen || facilitiesOpen || buildOpen || placement)) setAlertsOpen(false); }, [compact, open, menuOpen, facilitiesOpen, buildOpen, placement]);
+  // Track the space the top status bar and bottom controls take, so panels and buttons never overlap them.
+  useEffect(() => {
+    const measure = () => {
+      const top = hudTopRef.current?.getBoundingClientRect().bottom ?? 120;
+      const b = hudBottomRef.current?.getBoundingClientRect(), bottom = b && b.height > 0 ? b.top : window.innerHeight - 8;
+      hud.current = { top, bottom };
+      rootRef.current?.style.setProperty("--hud-top", `${Math.round(top)}px`);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (hudTopRef.current) ro.observe(hudTopRef.current);
+    if (hudBottomRef.current) ro.observe(hudBottomRef.current);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [ready, playing, compact]);
+  // Block pinch-zoom and double-tap zoom gestures that some phones still allow.
+  useEffect(() => {
+    const stop = (e: Event) => e.preventDefault();
+    const pinch = (e: TouchEvent) => { if (e.touches.length > 1) e.preventDefault(); };
+    document.addEventListener("gesturestart", stop);
+    document.addEventListener("touchmove", pinch, { passive: false });
+    return () => { document.removeEventListener("gesturestart", stop); document.removeEventListener("touchmove", pinch); };
+  }, []);
   simRef.current = sim;
   facilitiesRef.current = sim.facilities;
   solarRef.current = { cleanliness: sim.panels, progress: sim.cleaning > 0 ? 100 * (1 - sim.cleaning / CLEANING_SECONDS) : null };
@@ -128,13 +165,14 @@ export function MarsGame() {
     let last = performance.now(), saved = 0;
     const id = setInterval(() => {
       const now = performance.now(), dt = Math.min(1, (now - last) / 1000); last = now;
+      if (document.hidden) return; // no background work while the game isn't on screen
       const prev = simRef.current, next = briefRef.current ? prev : reward(tick(prev, dt));
       if (next !== prev) {
         simRef.current = next; setSim(next);
         const completed = next.facilities.find((f) => f.built && f.remaining === 0 && prev.facilities.some((p) => p.id === f.id && p.remaining > 0));
-        if (completed) { play("goal", `built-${completed.id}`); setToast({ id: ++toastN.current, text: `🏗️ ${facilityName(completed)} is ready!` }); setPip("Construction complete! The new facility is now connected to the base. Check the Facility Status panel."); }
+        if (completed) { play("built", `built-${completed.id}`); setToast({ id: ++toastN.current, text: `🏗️ ${facilityName(completed)} is ready!` }); setPip("Construction complete! The new facility is now connected to the base. Check the Facility Status panel."); }
         const o2 = oxygenAlert(prev, next);
-        if (o2) { play(o2 === "critical" ? "critical" : "alert", `oxygen-${o2}`); setToast({ id: ++toastN.current, text: o2 === "critical" ? "🚨 Oxygen critical — 10% left!" : "🫧 Oxygen low — 20% left!" }); }
+        if (o2) { play(o2 === "critical" ? "critical" : "low-oxygen", `oxygen-${o2}`); setToast({ id: ++toastN.current, text: o2 === "critical" ? "🚨 Oxygen critical — 10% left!" : "🫧 Oxygen low — 20% left!" }); }
         if (prev.cleaning > 0 && next.cleaning === 0 && next.status === "day") { play("goal", "panels-clean"); setToast({ id: ++toastN.current, text: "✨ Solar panels fully clean — maximum efficiency!" }); setPip("Excellent cleaning! The panels are now at 100% cleanliness and will generate much more energy."); }
         if (next.status !== prev.status) {
           play(next.status === "won" ? "win" : next.status === "lost" ? "lose" : "milestone");
@@ -161,7 +199,7 @@ export function MarsGame() {
       const top = pickPrimary(list, primaryRef.current);
       if ((top?.id ?? null) !== primaryRef.current || (top?.level ?? null) !== primaryLevelRef.current) {
         primaryRef.current = top?.id ?? null; primaryLevelRef.current = top?.level ?? null; setPrimary(top);
-        if (top && top.level <= 2) { play(top.level === 1 ? "critical" : "alert", `${top.id}-${top.level}`); setPip(`⚠️ ${top.title}! ${top.action}`); }
+        if (top && top.level <= 2) { play(alertSoundFor(top), `${top.id}-${top.level}`); setPip(`⚠️ ${top.title}! ${top.action}`); }
         else if (top && top.level === 4 && top.id.startsWith("obj-")) play("objective");
       } else if (top) setPrimary(top);
       const bp = cur.broken ? stationPoint(BREAK_STATION[cur.broken]) : null;
@@ -171,12 +209,13 @@ export function MarsGame() {
       if (cur.event?.kind === "meteor" && !fx.current.meteor) { const mp = stationPoint(BREAK_STATION[cur.event.target ?? "drill"]); if (mp) fx.current.meteor = { id: ++meteorN.current, x: mp.x, y: mp.y, impact: false }; }
       const tp = top?.station ? targetPoint(top.station, pos.current) : null;
       const nearT = top?.station && nearestStation(pos.current.x, pos.current.y, cur) === top.station;
-      nav.current = getSettings().nav && tp && top && !nearT && !cur.event ? { x: tp.x, y: tp.top + 20, label: `${top.icon} ${top.guide}`, level: top.level } : null;
+      nav.current = getSettings().nav && tp && top && !nearT && !cur.event ? { x: tp.x, y: tp.top + 20, label: `${top.icon} ${top.guide}`, level: top.level, top: hud.current.top + 72, bottom: hud.current.bottom - 40 } : null;
       if (next.event && !prev.event) { placementRef.current = null; setPlacement(null); setBuildOpen(false); setFacilitiesOpen(false); play(next.event.kind === "meteor" ? "meteor" : next.event.kind === "malfunction" ? "malfunction" : "alert", "event"); setPip(`${EVENTS[next.event.kind].icon} ${EVENTS[next.event.kind].title}! We need to decide what to do.`); }
       const st = nearestStation(pos.current.x, pos.current.y, cur);
       setStation((o) => { if (o !== st) setOpen(false); return st; });
+      setMusicMood(musicMood(cur)); setAmbience(ambienceFor(cur, briefRef.current ? null : st));
     }, 200);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); setAmbience(null); setMusicMood("calm"); };
   }, [playing]);
 
   function reward(s: Sim): Sim {
@@ -266,66 +305,101 @@ export function MarsGame() {
   const evDef = sim.event ? EVENTS[sim.event.kind] : null;
   const off = sim.unpowered.length > 0;
 
+  const toggleFacilities = () => { play(facilitiesOpen ? "close" : "open"); setFacilitiesOpen((v) => !v); setBuildOpen(false); cancelPlacement(); setOpen(false); setMenuOpen(false); };
+  const toggleBuild = () => { play(buildOpen ? "close" : "open"); setBuildOpen((v) => !v); setFacilitiesOpen(false); cancelPlacement(); setOpen(false); setMenuOpen(false); };
+  const toggleMenu = () => { play(menuOpen ? "close" : "open"); setMenuOpen((v) => !v); setFacilitiesOpen(false); setBuildOpen(false); setOpen(false); };
+  const closeStation = () => { play("close"); setOpen(false); };
+  const sheetOpen = compact && (open || menuOpen);
+  const btn = "hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink";
+  const settingsBody = (
+    <div className={`mt-1.5 space-y-1.5 text-xs ${compact ? "w-full" : "w-60"}`}>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔇 Mute everything <input type="checkbox" className="size-5" checked={audio.muted} onChange={(e) => updAudio({ muted: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🎵 Background music <input type="checkbox" className="size-5" checked={audio.music} onChange={(e) => updAudio({ music: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🎚️ Music volume <input type="range" aria-label="Music volume" min={0} max={1} step={0.05} value={audio.musicVolume} onChange={(e) => updAudio({ musicVolume: Number(e.target.value) })} className="w-28" /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔔 Sound effects <input type="checkbox" className="size-5" checked={audio.sfx} onChange={(e) => updAudio({ sfx: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🔉 Effects volume <input type="range" aria-label="Sound effects volume" min={0} max={1} step={0.05} value={audio.volume} onChange={(e) => updAudio({ volume: Number(e.target.value) })} className="w-28" /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🚨 Warning sounds <input type="checkbox" className="size-5" checked={audio.alerts} onChange={(e) => updAudio({ alerts: e.target.checked })} /></label>
+      <label className="flex min-h-8 items-center justify-between gap-2">🧭 Guide arrows <input type="checkbox" className="size-5" checked={audio.nav} onChange={(e) => updAudio({ nav: e.target.checked })} /></label>
+    </div>
+  );
+  const menuBody = (
+    <>
+      <div className="flex flex-wrap gap-1">
+        <button onClick={() => setLogOpen((v) => (v === "log" ? "" : "log"))} aria-pressed={logOpen === "log"} className={btn}>📜 Log</button>
+        <button onClick={() => setSettingsOpen((v) => !v)} aria-pressed={settingsOpen} aria-label="Sound and guidance settings" className={btn}>{audio.muted ? "🔇" : "🔊"}{compact && " Sound"}</button>
+        <button onClick={() => setLogOpen((v) => (v === "ach" ? "" : "ach"))} aria-pressed={logOpen === "ach"} className={btn}>⭐ {sim.achievements.length}/{ACHIEVEMENTS.length}</button>
+      </div>
+      {settingsOpen && settingsBody}
+      {logOpen === "log" && <ul className="hud-scroll mt-1 max-h-[40dvh] space-y-0.5 pr-1 text-xs">{sim.log.map((l, i) => <li key={i}><span className="text-hud-muted">S{l.sol}</span> {l.icon} {l.text}</li>)}</ul>}
+      {logOpen === "ach" && <ul className="hud-scroll mt-1 max-h-[40dvh] space-y-0.5 text-xs">{ACHIEVEMENTS.map((a) => { const got = sim.achievements.includes(a.id); return <li key={a.id} className={got ? "font-bold text-accent" : "text-hud-muted"}>{got ? a.icon : "🔒"} {a.title}</li>; })}</ul>}
+      <button onClick={() => { resetGame(); setPlaying(false); setMenuOpen(false); }} className="mt-1.5 min-h-8 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
+    </>
+  );
+  const onClickCapture = (e: React.MouseEvent) => {
+    const b = (e.target as HTMLElement).closest("button");
+    if (b && !b.disabled && !b.hasAttribute("data-sfx")) play("click");
+  };
+
   return (
-    <div className="game-root fixed inset-0 overflow-hidden">
-      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); } }} />
-      <div className="pointer-events-none absolute inset-0 p-2 text-hud-fg sm:p-3">
+    <div ref={rootRef} onClickCapture={onClickCapture} className="game-root fixed inset-0 overflow-hidden">
+      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); setMenuOpen(false); } }} />
+      <div className="hud-safe pointer-events-none absolute inset-0 text-hud-fg">
+        <div ref={hudTopRef}>
         <div className="flex items-start justify-between gap-2">
-          <div className="hud-panel pointer-events-auto rounded-2xl px-3 py-2">
-            <div className="font-display text-base font-bold leading-tight sm:text-xl">🪐 Mars Base Buddies</div>
+          <div className={`hud-panel pointer-events-auto shrink-0 rounded-2xl ${compact ? "px-2 py-1.5" : "hud-scroll max-h-[calc(100dvh-1rem)] px-3 py-2"}`}>
+            {!compact && <div className="font-display text-base font-bold leading-tight sm:text-xl">🪐 Mars Base Buddies</div>}
             <div className="flex items-center gap-2 text-xs sm:text-sm">
               <span className="whitespace-nowrap rounded-full bg-primary px-2 font-bold text-primary-foreground">SOL {sim.sol}/{MAX_SOL}</span>
-              <span className="whitespace-nowrap" title={info.tip}>{info.icon} {info.label}</span>
+              <span className="whitespace-nowrap" title={info.tip}>{info.icon}{!compact && ` ${info.label}`}</span>
             </div>
             <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-hud-ink/60" title="Time of day"><div className="h-full bg-accent" style={{ width: `${(sim.time / DAY_SECONDS) * 100}%` }} /></div>
-            <button onClick={() => { resetGame(); setPlaying(false); }} className="mt-1 text-xs underline decoration-dotted hover:text-accent">Restart / switch astronaut</button>
-            <div className="mt-1 flex gap-1">
-              <button onClick={() => setLogOpen((v) => (v === "log" ? "" : "log"))} className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">📜 Log</button>
-              <button onClick={() => setSettingsOpen((v) => !v)} aria-label="Sound and guidance settings" className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">{audio.muted ? "🔇" : "🔊"}</button>
-              <button onClick={() => setLogOpen((v) => (v === "ach" ? "" : "ach"))} className="rounded-lg bg-hud-ink/50 px-2 py-0.5 text-xs font-bold hover:bg-hud-ink">⭐ {sim.achievements.length}/{ACHIEVEMENTS.length}</button>
+            <div className="mt-1.5 flex gap-1">
+              {compact && <button data-sfx onClick={toggleMenu} aria-label="Menu, log and sound settings" aria-expanded={menuOpen} className={`${btn} text-lg`}>☰</button>}
+              <button data-sfx onClick={toggleFacilities} aria-label="Open facility status monitor" aria-expanded={facilitiesOpen} className={`${btn} ${compact ? "text-lg" : ""}`}>🏢{!compact && " Facilities"}</button>
+              <button data-sfx onClick={toggleBuild} aria-label="Build a new facility" aria-expanded={buildOpen} className={`hud-btn start-btn rounded-lg px-2.5 py-1 text-xs font-bold ${compact ? "text-lg" : ""}`}>🔨{compact ? "" : " BUILD"}</button>
             </div>
-            <div className="mt-1 flex gap-1">
-              <button onClick={() => { setFacilitiesOpen((v) => !v); setBuildOpen(false); cancelPlacement(); setOpen(false); }} aria-label="Open facility status monitor" className="rounded-lg bg-hud-ink/50 px-2 py-1 text-xs font-bold hover:bg-hud-ink">🏢 Facilities</button>
-              <button onClick={() => { setBuildOpen((v) => !v); setFacilitiesOpen(false); cancelPlacement(); setOpen(false); }} className="start-btn rounded-lg px-2.5 py-1 text-xs font-bold">🔨 BUILD</button>
-            </div>
-            {settingsOpen && (
-              <div className="mt-1 w-56 space-y-1 text-xs">
-                <label className="flex items-center justify-between gap-2">🔇 Mute all <input type="checkbox" checked={audio.muted} onChange={(e) => updAudio({ muted: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🎵 Sound effects <input type="checkbox" checked={audio.sfx} onChange={(e) => updAudio({ sfx: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🚨 Alert sounds <input type="checkbox" checked={audio.alerts} onChange={(e) => updAudio({ alerts: e.target.checked })} /></label>
-                <label className="flex items-center justify-between gap-2">🔉 Volume <input type="range" min={0} max={1} step={0.1} value={audio.volume} onChange={(e) => updAudio({ volume: Number(e.target.value) })} className="w-24" /></label>
-                <label className="flex items-center justify-between gap-2">🧭 Guide arrows <input type="checkbox" checked={audio.nav} onChange={(e) => updAudio({ nav: e.target.checked })} /></label>
+            {!compact && <div className="mt-1.5">{menuBody}</div>}
+          </div>
+          <div className={`hud-panel min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-2 ${short ? "flex flex-1" : "hidden lg:flex"}`} aria-label="Base supplies">{resBar}</div>
+          <div className={`hud-panel pointer-events-auto rounded-2xl ${short ? "w-56 shrink-0 px-2.5 py-1.5" : compact ? "min-w-0 max-w-[24rem] flex-1 px-2.5 py-1.5" : "w-[min(48vw,26rem)] shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]"}`}>
+            {compact ? (
+              <button onClick={() => setMissionOpen((v) => !v)} aria-expanded={missionOpen} aria-label="Mission details" className="flex min-h-9 w-full min-w-0 items-center gap-1.5 text-left">
+                <span className="shrink-0 text-sm">🎯</span>
+                <span className="min-w-0 flex-1 truncate font-display text-sm font-bold leading-tight">{goal ? goal.title : "All objectives complete! 🏆"}</span>
+                <span className="shrink-0 text-[10px] text-hud-muted">{sim.objective}/{OBJECTIVES.length} {missionOpen ? "▲" : "▼"}</span>
+              </button>
+            ) : (
+              <div className="text-[11px] font-bold uppercase tracking-widest text-accent sm:text-xs">🎯 Mission</div>
+            )}
+            {(!compact || missionOpen) && (
+              <div className={compact ? "hud-scroll max-h-[45dvh]" : ""}>
+                <button onClick={() => setShowGoals((v) => !v)} className="mt-1 block w-full text-left">
+                  {!compact && <div className="font-display text-base font-bold leading-snug sm:text-lg md:text-xl">{goal ? goal.title : "All objectives complete! 🏆"}</div>}
+                  {goal && <div className="mt-1 text-xs leading-snug text-hud-muted sm:text-sm">{goal.hint}</div>}
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food transition-all" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>
+                  <div className="mt-1.5 text-xs text-hud-muted sm:text-sm">Objectives {sim.objective}/{OBJECTIVES.length} · Places {found.length}/{LANDMARKS.length} · 🔍 {sim.discoveries.length} <span className="underline">{showGoals ? "hide" : "list"}</span></div>
+                </button>
+                {showGoals && <ol className="hud-scroll mt-2 max-h-[40dvh] space-y-1 border-t border-hud-fg/15 pt-2 text-xs sm:text-sm">{OBJECTIVES.map((o, i) => <li key={o.title} className={i < sim.objective ? "text-res-food" : i === sim.objective ? "font-bold" : "text-hud-muted"}>{i < sim.objective ? "✅" : i === sim.objective ? "▶️" : "🔒"} {o.title}</li>)}</ol>}
               </div>
             )}
-            {logOpen === "log" && <ul className="mt-1 max-h-[40vh] w-64 space-y-0.5 overflow-y-auto pr-1 text-xs">{sim.log.map((l, i) => <li key={i}><span className="text-hud-muted">S{l.sol}</span> {l.icon} {l.text}</li>)}</ul>}
-            {logOpen === "ach" && <ul className="mt-1 max-h-[40vh] w-64 space-y-0.5 overflow-y-auto text-xs">{ACHIEVEMENTS.map((a) => { const got = sim.achievements.includes(a.id); return <li key={a.id} className={got ? "font-bold text-accent" : "text-hud-muted"}>{got ? a.icon : "🔒"} {a.title}</li>; })}</ul>}
-          </div>
-          <div className="hud-panel order-last hidden flex-wrap items-center gap-3 rounded-2xl px-3 py-2 lg:flex lg:order-none">{resBar}</div>
-          <div className="hud-panel w-[min(48vw,26rem)] shrink-0 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 md:w-[26rem] lg:w-[min(26rem,30vw)] xl:w-[28rem]">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-accent sm:text-xs">🎯 Mission</div>
-            <button onClick={() => setShowGoals((v) => !v)} className="pointer-events-auto mt-1 block w-full text-left">
-              <div className="font-display text-base font-bold leading-snug sm:text-lg md:text-xl">{goal ? goal.title : "All objectives complete! 🏆"}</div>
-              {goal && <div className="mt-1 text-xs leading-snug text-hud-muted sm:text-sm">{goal.hint}</div>}
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food transition-all" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>
-              <div className="mt-1.5 text-xs text-hud-muted sm:text-sm">Objectives {sim.objective}/{OBJECTIVES.length} · Places {found.length}/{LANDMARKS.length} · 🔍 {sim.discoveries.length} <span className="underline">{showGoals ? "hide" : "list"}</span></div>
-            </button>
-            {showGoals && <ol className="mt-2 max-h-[40vh] space-y-1 overflow-y-auto border-t border-hud-fg/15 pt-2 text-xs sm:text-sm">{OBJECTIVES.map((o, i) => <li key={o.title} className={i < sim.objective ? "text-res-food" : i === sim.objective ? "font-bold" : "text-hud-muted"}>{i < sim.objective ? "✅" : i === sim.objective ? "▶️" : "🔒"} {o.title}</li>)}</ol>}
-            {sim.broken && <div className="mt-2 text-xs sm:text-sm font-bold text-destructive">🔧 Broken: {BREAK_NAMES[sim.broken]}</div>}
-            {off && <div className="mt-2 text-xs sm:text-sm font-bold text-destructive">⚡ No power: {sim.unpowered.join(", ")}</div>}
+            {compact && !missionOpen && <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-hud-ink/60"><div className="h-full bg-res-food" style={{ width: `${(sim.objective / OBJECTIVES.length) * 100}%` }} /></div>}
+            {sim.broken && <div className="mt-1.5 text-xs font-bold text-destructive sm:text-sm">🔧 Broken: {BREAK_NAMES[sim.broken]}</div>}
+            {off && <div className="mt-1.5 text-xs font-bold text-destructive sm:text-sm">⚡ No power: {sim.unpowered.join(", ")}</div>}
           </div>
         </div>
-        <div className="hud-panel mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden">{resBar}</div>
+        {!short && <div className="hud-panel pointer-events-auto mx-auto mt-2 flex w-fit max-w-full flex-wrap justify-center gap-x-3 gap-y-1 rounded-2xl px-3 py-1.5 lg:hidden" aria-label="Base supplies">{resBar}</div>}
+        </div>
         {sim.status === "day" && !briefing && (primary || alertList.length > 0) && (
           <div className="mx-auto mt-2 w-fit max-w-[min(94vw,30rem)]">
             {primary && (
-              <button onClick={() => setAlertsOpen((v) => !v)} className={`pointer-events-auto flex w-full items-center gap-2 rounded-full px-3 py-1 text-left text-xs font-bold sm:text-sm ${primary.level === 1 ? "animate-pulse bg-destructive text-destructive-foreground" : primary.level === 2 ? "bg-primary text-primary-foreground" : "hud-panel"}`}>
+              <button onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen} className={`pointer-events-auto flex min-h-8 w-full items-center gap-2 rounded-full px-3 py-1 text-left text-xs font-bold sm:text-sm ${primary.level === 1 ? "animate-pulse bg-destructive text-destructive-foreground" : primary.level === 2 ? "bg-primary text-primary-foreground" : "hud-panel"}`}>
                 <span className="rounded-full bg-hud-ink/40 px-1.5 text-[10px] text-hud-fg">{LEVEL_NAMES[primary.level]}</span>
                 <span className="truncate">{primary.icon} {primary.level === 4 ? `Next: ${primary.title}` : primary.guide}</span>
                 <span className="ml-auto whitespace-nowrap text-[11px] underline">{urgent.length > 1 ? `+${urgent.length - 1} more` : "details"}</span>
               </button>
             )}
             {alertsOpen && (
-              <ul className="hud-panel pointer-events-auto mt-1 max-h-[40dvh] space-y-1.5 overflow-y-auto rounded-2xl p-2 text-xs">
+              <ul className="hud-panel hud-scroll pointer-events-auto mt-1 max-h-[40dvh] space-y-1.5 rounded-2xl p-2 text-xs">
                 {alertList.map((a) => (
                   <li key={a.id} className={`rounded-lg bg-hud-ink/40 px-2 py-1 ${a.id === primary?.id ? "ring-2 ring-accent" : ""}`}>
                     <div className="font-bold"><span className={a.level === 1 ? "text-destructive" : a.level === 2 ? "text-primary" : "text-accent"}>{LEVEL_NAMES[a.level]}</span> {a.icon} {a.title}</div>
@@ -346,7 +420,7 @@ export function MarsGame() {
         )}
 
         {briefing && sim.status === "day" && (
-          <div className="event-pop hud-panel pointer-events-auto absolute left-1/2 top-1/2 max-h-[85dvh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-4">
+          <div className="event-pop hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[85dvh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-4">
             <div className="text-center text-[10px] font-bold uppercase tracking-widest text-accent">Junior Astronaut Mission Briefing</div>
             <div className="text-center font-display text-2xl font-bold">Build a home on Mars 🚀</div>
             <p className="mt-1 text-center text-sm">Keep your crew alive for <b>10 Sols</b> (Martian days). Every machine is connected — choose wisely!</p>
@@ -359,12 +433,12 @@ export function MarsGame() {
               <li>🏠 <b>Base</b> — shortages slowly damage the base. If it reaches 0, the mission fails.</li>
               <li>🔍 <b>Explore</b> blue <b>?</b> sites for discoveries, then study them at the Research Lab.</li>
             </ul>
-            <p className="mt-2 text-center text-xs text-hud-muted">Walk up to a building, then click its button or the building itself to use it.</p>
-            <div className="text-center"><button onClick={() => { beep("goal"); setBriefing(false); setBanner((b) => b + 1); }} className="start-btn mt-3 rounded-xl px-6 py-2 font-bold">Start mission!</button></div>
+            <p className="mt-2 text-center text-xs text-hud-muted">{compact ? "Move with the joystick, then tap a building's button to use it. Tap ☰ for sound settings." : "Walk up to a building, then click its button or the building itself to use it."}</p>
+            <div className="text-center"><button data-sfx onClick={() => { beep("goal"); setBriefing(false); setBanner((b) => b + 1); }} className="start-btn mt-3 rounded-xl px-6 py-2 font-bold">Start mission!</button></div>
           </div>
         )}
         {sim.status !== "day" && (
-          <div className={`hud-panel pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-4 text-center ${sim.status === "summary" ? "w-[min(92vw,360px)]" : "event-pop w-[min(94vw,560px)]"}`}>
+          <div className={`hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-4 text-center ${sim.status === "summary" ? "w-[min(92vw,360px)]" : "event-pop w-[min(94vw,560px)]"}`}>
             {sim.status === "summary" && <>
               <div className="font-display text-2xl font-bold">Sol {sim.sol} complete! 🌙</div>
               <p className="mt-1 text-sm text-hud-muted">Time is paused. Walk to buildings to switch systems, repair or upgrade before tomorrow.</p>
@@ -376,13 +450,13 @@ export function MarsGame() {
         )}
 
         {evDef && sim.event && sim.status === "day" && (
-          <div className="event-pop hud-panel pointer-events-auto absolute left-1/2 top-1/2 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-3 text-center">
+          <div className="event-pop hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-3 text-center">
             <div className="text-4xl">{evDef.icon}</div>
             <div className="font-display text-xl font-bold">{evDef.title}</div>
             <p className="text-sm">{evDef.text(sim)}</p>
             <p className="mt-0.5 text-[11px] text-hud-muted">Time is paused. Choose wisely:</p>
             {evDef.choices(sim).map((c, i) => (
-              <button key={c.label} onClick={() => choose(i)} className="mt-2 block w-full rounded-xl bg-primary px-3 py-2 text-left text-primary-foreground active:scale-95">
+              <button data-sfx key={c.label} onClick={() => choose(i)} className="mt-2 block w-full rounded-xl bg-primary px-3 py-2 text-left text-primary-foreground active:scale-95">
                 <div className="text-sm font-bold">{i + 1}. {c.label}</div>
                 <div className="text-xs">👍 {c.pro}</div><div className="text-xs">👎 {c.con}</div>
               </button>
@@ -391,40 +465,53 @@ export function MarsGame() {
         )}
         {toast && <div key={toast.id} className="sol-banner absolute inset-x-0 top-[22%] text-center"><span className="hud-panel inline-block rounded-2xl px-4 py-2 text-base font-bold text-accent sm:text-lg">{toast.text}</span></div>}
 
-        {facilitiesOpen && !sim.event && !briefing && <FacilityPanel facilities={facilityList} onClose={() => setFacilitiesOpen(false)} onToggle={(id) => doAction(`facility-toggle:${id}`)} onRepair={(id) => doAction(`facility-repair:${id}`)} />}
-        {buildOpen && !sim.event && !briefing && <BuildMenu sim={sim} onSelect={chooseBuild} onClose={() => setBuildOpen(false)} />}
-        {placement && !sim.event && !briefing && <PlacementBar sim={sim} {...placement} onConfirm={confirmBuild} onCancel={cancelPlacement} />}
+        {facilitiesOpen && !sim.event && !briefing && <FacilityPanel compact={compact} facilities={facilityList} onClose={() => { play("close"); setFacilitiesOpen(false); }} onToggle={(id) => doAction(`facility-toggle:${id}`)} onRepair={(id) => doAction(`facility-repair:${id}`)} />}
+        {buildOpen && !sim.event && !briefing && <BuildMenu compact={compact} sim={sim} onSelect={chooseBuild} onClose={() => { play("close"); setBuildOpen(false); }} />}
+        {placement && !sim.event && !briefing && <PlacementBar compact={compact} sim={sim} {...placement} onConfirm={confirmBuild} onCancel={() => { play("close"); cancelPlacement(); }} />}
 
-        {station && !open && !sim.event && !briefing && !placement && !facilitiesOpen && !buildOpen && (
-          <FacilityButton station={station} view={view} facilities={facilitiesRef} pos={pos} onOpen={() => { beep("open"); setOpen(true); }} label={<><span className="text-2xl">{stIcon}</span><span>Open {stName}</span></>} />
+        {compact && menuOpen && !sim.event && !briefing && (
+          <section role="dialog" aria-label="Menu" className={SHEET}>
+            <header className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-bold text-accent">🪐 Mars Base Buddies</h2>
+              <button data-sfx onClick={toggleMenu} aria-label="Close menu" className="hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-lg">✕</button>
+            </header>
+            <div className="mb-2 text-xs text-hud-muted">{info.icon} {info.label} — {info.tip}</div>
+            {menuBody}
+          </section>
+        )}
+
+        {station && !open && !sim.event && !briefing && !placement && !facilitiesOpen && !buildOpen && !sheetOpen && (
+          <FacilityButton station={station} view={view} facilities={facilitiesRef} pos={pos} hud={hud} onOpen={() => { beep("open"); setOpen(true); setMenuOpen(false); }} label={<><span className="text-2xl">{stIcon}</span><span>Open {stName}</span></>} />
         )}
         {station && open && !placement && !facilitiesOpen && !buildOpen && (
-          <div key={flash?.id} className={`hud-panel pointer-events-auto absolute bottom-[34%] left-1/2 max-h-[55dvh] w-[min(94vw,470px)] -translate-x-1/2 overflow-y-auto rounded-2xl p-3 sm:bottom-28 sm:p-4 ${flash ? (flash.ok ? "panel-ok" : "panel-fail") : ""}`}>
+          <div key={flash?.id} className={`${compact ? SHEET : "hud-panel hud-scroll pointer-events-auto absolute bottom-28 left-1/2 max-h-[calc(100dvh-var(--hud-top,10rem)-8rem)] w-[min(94vw,470px)] -translate-x-1/2 rounded-2xl p-4"} ${flash ? (flash.ok ? "panel-ok" : "panel-fail") : ""}`}>
             <div className="mb-2 flex items-center justify-between text-sm font-bold uppercase tracking-wider text-accent sm:text-base">
               <span>{stIcon} {stName}</span>
-              <button onClick={() => setOpen(false)} aria-label="Close" className="rounded px-2 py-0.5 text-lg text-hud-fg hover:bg-hud-ink/40">✕</button>
+              <button data-sfx onClick={closeStation} aria-label="Close" className="hud-btn rounded px-2 py-0.5 text-lg text-hud-fg hover:bg-hud-ink/40">✕</button>
             </div>
             {site && <div className="mb-2 rounded-xl bg-hud-ink/40 px-3 py-2 text-sm">{sim.discoveries.includes(site.id) ? `✅ Scanned: ${site.discovery}` : "Something interesting is here! Scanning uses suit power and oxygen — more during dust storms."}</div>}
             <ul className="space-y-0.5 rounded-xl bg-hud-ink/40 px-3 py-2 text-sm leading-relaxed sm:text-base">{infoFor(station, sim).map((l) => <li key={l}>{l}</li>)}</ul>
             {actions.length === 0 && <div className="mt-2 text-center text-sm text-hud-muted">Nothing left to build here!</div>}
             {actions.map((a, i) => (
-              <button key={a.id} onClick={() => doAction(a.id)} className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 py-2.5 text-left text-sm font-bold text-primary-foreground active:scale-95 sm:text-base">
+              <button data-sfx key={a.id} onClick={() => doAction(a.id)} className="mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 py-2.5 text-left text-sm font-bold text-primary-foreground active:scale-95 sm:text-base">
                 <span><span className="desktop-only mr-1 rounded bg-hud-ink/40 px-1 text-xs">{i + 1}</span>{a.label}</span>{a.cost && <span className="whitespace-nowrap text-sm">{a.cost}</span>}
               </button>
             ))}
           </div>
         )}
 
-        <div className={`absolute inset-x-2 bottom-2 flex ${sim.status === "won" || sim.status === "lost" || briefing || facilitiesOpen || buildOpen || placement ? "hidden" : ""} items-end justify-between gap-2 sm:inset-x-3 sm:bottom-3`}>
+        <div ref={hudBottomRef} className={`absolute inset-x-[max(0.5rem,env(safe-area-inset-left))] bottom-[max(0.5rem,env(safe-area-inset-bottom))] flex ${sim.status === "won" || sim.status === "lost" || briefing || facilitiesOpen || buildOpen || placement || sheetOpen ? "hidden" : ""} items-end justify-between gap-2`}>
           <div className="touch-only"><Joystick input={input} /></div>
           <div className="desktop-only hud-panel rounded-xl px-3 py-1.5 text-xs">Move: WASD / Arrows · Open: click building · Choose: 1–5</div>
-          <div className="hud-panel pointer-events-auto flex max-w-[60vw] items-end gap-2 rounded-2xl p-2 sm:max-w-sm">
-            <div className="shrink-0 rounded-xl bg-hud-ink/40 p-1"><PipPortrait size={56} /></div>
-            <div>
-              <div className="font-display text-sm font-bold text-accent">PIP</div>
-              <p key={pip} className="pip-text text-xs leading-snug sm:text-sm">{pip}</p>
-            </div>
-          </div>
+          <button onClick={() => setPipMin((v) => !v)} aria-label={pipMin ? "Show PIP's message" : "Hide PIP's message"} aria-expanded={!pipMin} className={`hud-panel pointer-events-auto flex min-w-0 items-end gap-2 rounded-2xl p-1.5 text-left sm:p-2 ${pipMin ? "" : compact ? "max-w-[min(62vw,22rem)]" : "max-w-[60vw] sm:max-w-sm"}`}>
+            <span className="shrink-0 rounded-xl bg-hud-ink/40 p-1"><PipPortrait size={compact ? 44 : 56} /></span>
+            {!pipMin && (
+              <span className="min-w-0">
+                <span className="block font-display text-sm font-bold text-accent">PIP</span>
+                <span key={pip} className="pip-text block text-xs leading-snug sm:text-sm">{pip}</span>
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </div>
