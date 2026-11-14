@@ -389,14 +389,14 @@ export function MarsGame() {
         {sim.status === "day" && !briefing && (primary || alertList.length > 0) && (
           <div className="mx-auto mt-2 w-fit max-w-[min(94vw,30rem)]">
             {primary && (
-              <button onClick={() => setAlertsOpen((v) => !v)} className={`pointer-events-auto flex w-full items-center gap-2 rounded-full px-3 py-1 text-left text-xs font-bold sm:text-sm ${primary.level === 1 ? "animate-pulse bg-destructive text-destructive-foreground" : primary.level === 2 ? "bg-primary text-primary-foreground" : "hud-panel"}`}>
+              <button onClick={() => setAlertsOpen((v) => !v)} aria-expanded={alertsOpen} className={`pointer-events-auto flex min-h-8 w-full items-center gap-2 rounded-full px-3 py-1 text-left text-xs font-bold sm:text-sm ${primary.level === 1 ? "animate-pulse bg-destructive text-destructive-foreground" : primary.level === 2 ? "bg-primary text-primary-foreground" : "hud-panel"}`}>
                 <span className="rounded-full bg-hud-ink/40 px-1.5 text-[10px] text-hud-fg">{LEVEL_NAMES[primary.level]}</span>
                 <span className="truncate">{primary.icon} {primary.level === 4 ? `Next: ${primary.title}` : primary.guide}</span>
                 <span className="ml-auto whitespace-nowrap text-[11px] underline">{urgent.length > 1 ? `+${urgent.length - 1} more` : "details"}</span>
               </button>
             )}
             {alertsOpen && (
-              <ul className="hud-panel pointer-events-auto mt-1 max-h-[40dvh] space-y-1.5 overflow-y-auto rounded-2xl p-2 text-xs">
+              <ul className="hud-panel hud-scroll pointer-events-auto mt-1 max-h-[40dvh] space-y-1.5 rounded-2xl p-2 text-xs">
                 {alertList.map((a) => (
                   <li key={a.id} className={`rounded-lg bg-hud-ink/40 px-2 py-1 ${a.id === primary?.id ? "ring-2 ring-accent" : ""}`}>
                     <div className="font-bold"><span className={a.level === 1 ? "text-destructive" : a.level === 2 ? "text-primary" : "text-accent"}>{LEVEL_NAMES[a.level]}</span> {a.icon} {a.title}</div>
@@ -408,6 +408,7 @@ export function MarsGame() {
             )}
           </div>
         )}
+        </div>
 
         {sim.status === "day" && banner > 0 && (
           <div key={banner} className="sol-banner absolute inset-x-0 top-1/3 text-center">
@@ -417,7 +418,7 @@ export function MarsGame() {
         )}
 
         {briefing && sim.status === "day" && (
-          <div className="event-pop hud-panel pointer-events-auto absolute left-1/2 top-1/2 max-h-[85dvh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-4">
+          <div className="event-pop hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[85dvh] w-[min(92vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-4">
             <div className="text-center text-[10px] font-bold uppercase tracking-widest text-accent">Junior Astronaut Mission Briefing</div>
             <div className="text-center font-display text-2xl font-bold">Build a home on Mars 🚀</div>
             <p className="mt-1 text-center text-sm">Keep your crew alive for <b>10 Sols</b> (Martian days). Every machine is connected — choose wisely!</p>
@@ -430,12 +431,12 @@ export function MarsGame() {
               <li>🏠 <b>Base</b> — shortages slowly damage the base. If it reaches 0, the mission fails.</li>
               <li>🔍 <b>Explore</b> blue <b>?</b> sites for discoveries, then study them at the Research Lab.</li>
             </ul>
-            <p className="mt-2 text-center text-xs text-hud-muted">Walk up to a building, then click its button or the building itself to use it.</p>
-            <div className="text-center"><button onClick={() => { beep("goal"); setBriefing(false); setBanner((b) => b + 1); }} className="start-btn mt-3 rounded-xl px-6 py-2 font-bold">Start mission!</button></div>
+            <p className="mt-2 text-center text-xs text-hud-muted">{compact ? "Move with the joystick, then tap a building's button to use it. Tap ☰ for sound settings." : "Walk up to a building, then click its button or the building itself to use it."}</p>
+            <div className="text-center"><button data-sfx onClick={() => { beep("goal"); setBriefing(false); setBanner((b) => b + 1); }} className="start-btn mt-3 rounded-xl px-6 py-2 font-bold">Start mission!</button></div>
           </div>
         )}
         {sim.status !== "day" && (
-          <div className={`hud-panel pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl p-4 text-center ${sim.status === "summary" ? "w-[min(92vw,360px)]" : "event-pop w-[min(94vw,560px)]"}`}>
+          <div className={`hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-4 text-center ${sim.status === "summary" ? "w-[min(92vw,360px)]" : "event-pop w-[min(94vw,560px)]"}`}>
             {sim.status === "summary" && <>
               <div className="font-display text-2xl font-bold">Sol {sim.sol} complete! 🌙</div>
               <p className="mt-1 text-sm text-hud-muted">Time is paused. Walk to buildings to switch systems, repair or upgrade before tomorrow.</p>
@@ -447,13 +448,13 @@ export function MarsGame() {
         )}
 
         {evDef && sim.event && sim.status === "day" && (
-          <div className="event-pop hud-panel pointer-events-auto absolute left-1/2 top-1/2 w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-3 text-center">
+          <div className="event-pop hud-panel hud-scroll pointer-events-auto absolute left-1/2 top-1/2 max-h-[90dvh] w-[min(92vw,380px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl p-3 text-center">
             <div className="text-4xl">{evDef.icon}</div>
             <div className="font-display text-xl font-bold">{evDef.title}</div>
             <p className="text-sm">{evDef.text(sim)}</p>
             <p className="mt-0.5 text-[11px] text-hud-muted">Time is paused. Choose wisely:</p>
             {evDef.choices(sim).map((c, i) => (
-              <button key={c.label} onClick={() => choose(i)} className="mt-2 block w-full rounded-xl bg-primary px-3 py-2 text-left text-primary-foreground active:scale-95">
+              <button data-sfx key={c.label} onClick={() => choose(i)} className="mt-2 block w-full rounded-xl bg-primary px-3 py-2 text-left text-primary-foreground active:scale-95">
                 <div className="text-sm font-bold">{i + 1}. {c.label}</div>
                 <div className="text-xs">👍 {c.pro}</div><div className="text-xs">👎 {c.con}</div>
               </button>
@@ -462,40 +463,53 @@ export function MarsGame() {
         )}
         {toast && <div key={toast.id} className="sol-banner absolute inset-x-0 top-[22%] text-center"><span className="hud-panel inline-block rounded-2xl px-4 py-2 text-base font-bold text-accent sm:text-lg">{toast.text}</span></div>}
 
-        {facilitiesOpen && !sim.event && !briefing && <FacilityPanel facilities={facilityList} onClose={() => setFacilitiesOpen(false)} onToggle={(id) => doAction(`facility-toggle:${id}`)} onRepair={(id) => doAction(`facility-repair:${id}`)} />}
-        {buildOpen && !sim.event && !briefing && <BuildMenu sim={sim} onSelect={chooseBuild} onClose={() => setBuildOpen(false)} />}
-        {placement && !sim.event && !briefing && <PlacementBar sim={sim} {...placement} onConfirm={confirmBuild} onCancel={cancelPlacement} />}
+        {facilitiesOpen && !sim.event && !briefing && <FacilityPanel compact={compact} facilities={facilityList} onClose={() => { play("close"); setFacilitiesOpen(false); }} onToggle={(id) => doAction(`facility-toggle:${id}`)} onRepair={(id) => doAction(`facility-repair:${id}`)} />}
+        {buildOpen && !sim.event && !briefing && <BuildMenu compact={compact} sim={sim} onSelect={chooseBuild} onClose={() => { play("close"); setBuildOpen(false); }} />}
+        {placement && !sim.event && !briefing && <PlacementBar compact={compact} sim={sim} {...placement} onConfirm={confirmBuild} onCancel={() => { play("close"); cancelPlacement(); }} />}
 
-        {station && !open && !sim.event && !briefing && !placement && !facilitiesOpen && !buildOpen && (
-          <FacilityButton station={station} view={view} facilities={facilitiesRef} pos={pos} onOpen={() => { beep("open"); setOpen(true); }} label={<><span className="text-2xl">{stIcon}</span><span>Open {stName}</span></>} />
+        {compact && menuOpen && !sim.event && !briefing && (
+          <section role="dialog" aria-label="Menu" className={SHEET}>
+            <header className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-bold text-accent">🪐 Mars Base Buddies</h2>
+              <button data-sfx onClick={toggleMenu} aria-label="Close menu" className="hud-btn rounded-lg bg-hud-ink/50 px-2 py-1 text-lg">✕</button>
+            </header>
+            <div className="mb-2 text-xs text-hud-muted">{info.icon} {info.label} — {info.tip}</div>
+            {menuBody}
+          </section>
+        )}
+
+        {station && !open && !sim.event && !briefing && !placement && !facilitiesOpen && !buildOpen && !sheetOpen && (
+          <FacilityButton station={station} view={view} facilities={facilitiesRef} pos={pos} hud={hud} onOpen={() => { beep("open"); setOpen(true); setMenuOpen(false); }} label={<><span className="text-2xl">{stIcon}</span><span>Open {stName}</span></>} />
         )}
         {station && open && !placement && !facilitiesOpen && !buildOpen && (
-          <div key={flash?.id} className={`hud-panel pointer-events-auto absolute bottom-[34%] left-1/2 max-h-[55dvh] w-[min(94vw,470px)] -translate-x-1/2 overflow-y-auto rounded-2xl p-3 sm:bottom-28 sm:p-4 ${flash ? (flash.ok ? "panel-ok" : "panel-fail") : ""}`}>
+          <div key={flash?.id} className={`${compact ? SHEET : "hud-panel hud-scroll pointer-events-auto absolute bottom-28 left-1/2 max-h-[calc(100dvh-var(--hud-top,10rem)-8rem)] w-[min(94vw,470px)] -translate-x-1/2 rounded-2xl p-4"} ${flash ? (flash.ok ? "panel-ok" : "panel-fail") : ""}`}>
             <div className="mb-2 flex items-center justify-between text-sm font-bold uppercase tracking-wider text-accent sm:text-base">
               <span>{stIcon} {stName}</span>
-              <button onClick={() => setOpen(false)} aria-label="Close" className="rounded px-2 py-0.5 text-lg text-hud-fg hover:bg-hud-ink/40">✕</button>
+              <button data-sfx onClick={closeStation} aria-label="Close" className="hud-btn rounded px-2 py-0.5 text-lg text-hud-fg hover:bg-hud-ink/40">✕</button>
             </div>
             {site && <div className="mb-2 rounded-xl bg-hud-ink/40 px-3 py-2 text-sm">{sim.discoveries.includes(site.id) ? `✅ Scanned: ${site.discovery}` : "Something interesting is here! Scanning uses suit power and oxygen — more during dust storms."}</div>}
             <ul className="space-y-0.5 rounded-xl bg-hud-ink/40 px-3 py-2 text-sm leading-relaxed sm:text-base">{infoFor(station, sim).map((l) => <li key={l}>{l}</li>)}</ul>
             {actions.length === 0 && <div className="mt-2 text-center text-sm text-hud-muted">Nothing left to build here!</div>}
             {actions.map((a, i) => (
-              <button key={a.id} onClick={() => doAction(a.id)} className="mt-2 flex w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 py-2.5 text-left text-sm font-bold text-primary-foreground active:scale-95 sm:text-base">
+              <button data-sfx key={a.id} onClick={() => doAction(a.id)} className="mt-2 flex min-h-11 w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 py-2.5 text-left text-sm font-bold text-primary-foreground active:scale-95 sm:text-base">
                 <span><span className="desktop-only mr-1 rounded bg-hud-ink/40 px-1 text-xs">{i + 1}</span>{a.label}</span>{a.cost && <span className="whitespace-nowrap text-sm">{a.cost}</span>}
               </button>
             ))}
           </div>
         )}
 
-        <div className={`absolute inset-x-2 bottom-2 flex ${sim.status === "won" || sim.status === "lost" || briefing || facilitiesOpen || buildOpen || placement ? "hidden" : ""} items-end justify-between gap-2 sm:inset-x-3 sm:bottom-3`}>
+        <div ref={hudBottomRef} className={`absolute inset-x-[max(0.5rem,env(safe-area-inset-left))] bottom-[max(0.5rem,env(safe-area-inset-bottom))] flex ${sim.status === "won" || sim.status === "lost" || briefing || facilitiesOpen || buildOpen || placement || sheetOpen ? "hidden" : ""} items-end justify-between gap-2`}>
           <div className="touch-only"><Joystick input={input} /></div>
           <div className="desktop-only hud-panel rounded-xl px-3 py-1.5 text-xs">Move: WASD / Arrows · Open: click building · Choose: 1–5</div>
-          <div className="hud-panel pointer-events-auto flex max-w-[60vw] items-end gap-2 rounded-2xl p-2 sm:max-w-sm">
-            <div className="shrink-0 rounded-xl bg-hud-ink/40 p-1"><PipPortrait size={56} /></div>
-            <div>
-              <div className="font-display text-sm font-bold text-accent">PIP</div>
-              <p key={pip} className="pip-text text-xs leading-snug sm:text-sm">{pip}</p>
-            </div>
-          </div>
+          <button onClick={() => setPipMin((v) => !v)} aria-label={pipMin ? "Show PIP's message" : "Hide PIP's message"} aria-expanded={!pipMin} className={`hud-panel pointer-events-auto flex min-w-0 items-end gap-2 rounded-2xl p-1.5 text-left sm:p-2 ${pipMin ? "" : compact ? "max-w-[min(62vw,22rem)]" : "max-w-[60vw] sm:max-w-sm"}`}>
+            <span className="shrink-0 rounded-xl bg-hud-ink/40 p-1"><PipPortrait size={compact ? 44 : 56} /></span>
+            {!pipMin && (
+              <span className="min-w-0">
+                <span className="block font-display text-sm font-bold text-accent">PIP</span>
+                <span key={pip} className="pip-text block text-xs leading-snug sm:text-sm">{pip}</span>
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </div>
