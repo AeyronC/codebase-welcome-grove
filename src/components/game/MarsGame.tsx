@@ -12,6 +12,7 @@ import { alertSoundFor, ambienceFor, musicMood } from "@/game/audioRules";
 import { useCompact, useShortLandscape } from "@/hooks/use-compact";
 import { newFx, type Nav } from "@/game/fx";
 import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
+import { stepZoom } from "@/game/zoom";
 import type { Character, Landmark } from "@/game/types";
 
 const WELCOME = "Welcome to Mars, astronaut! I'm PIP, your colony buddy. Let's explore our new home!";
@@ -103,6 +104,8 @@ export function MarsGame() {
   const markers = useRef<{ x: number; y: number }[]>([]);
   const speed = useRef(1);
   const view = useRef({ cx: 0, cy: 0, zoom: 1 });
+  const zoom = useRef(1);
+  const zoomStep = (dir: 1 | -1 | 0) => { zoom.current = dir === 0 ? 1 : stepZoom(zoom.current, dir); };
   const toastN = useRef(0);
   const [briefing, setBriefing] = useState(false);
   const briefRef = useRef(false);
@@ -342,7 +345,7 @@ export function MarsGame() {
 
   return (
     <div ref={rootRef} onClickCapture={onClickCapture} className="game-root fixed inset-0 overflow-hidden">
-      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); setMenuOpen(false); } }} />
+      <GameCanvas key={runId} character={character} input={input} onDiscover={onDiscover} posRef={pos} markersRef={markers} speedRef={speed} viewRef={view} fxRef={fx} navRef={nav} facilitiesRef={facilitiesRef} solarRef={solarRef} zoomRef={zoom} placementRef={placementRef} onPlacement={(x, y) => { const p = placementRef.current; if (p) setPlacement({ ...p, x, y }); }} onWorldClick={(x, y) => { if (station && !open && !sim.event && !briefing && hitStation(x, y, station, sim)) { beep("open"); setOpen(true); setMenuOpen(false); } }} />
       <div className="hud-safe pointer-events-none absolute inset-0 text-hud-fg">
         <div ref={hudTopRef}>
         <div className="flex items-start justify-between gap-2">
@@ -433,7 +436,7 @@ export function MarsGame() {
               <li>🏠 <b>Base</b> — shortages slowly damage the base. If it reaches 0, the mission fails.</li>
               <li>🔍 <b>Explore</b> blue <b>?</b> sites for discoveries, then study them at the Research Lab.</li>
             </ul>
-            <p className="mt-2 text-center text-xs text-hud-muted">{compact ? "Move with the joystick, then tap a building's button to use it. Tap ☰ for sound settings." : "Walk up to a building, then click its button or the building itself to use it."}</p>
+            <p className="mt-2 text-center text-xs text-hud-muted">{compact ? "Move with the joystick and pinch to zoom, then tap a building's button to use it. Tap ☰ for sound settings." : "Walk up to a building, then click its button or the building itself to use it."}</p>
             <div className="text-center"><button data-sfx onClick={() => { beep("goal"); setBriefing(false); setBanner((b) => b + 1); }} className="start-btn mt-3 rounded-xl px-6 py-2 font-bold">Start mission!</button></div>
           </div>
         )}
@@ -502,7 +505,13 @@ export function MarsGame() {
 
         <div ref={hudBottomRef} className={`absolute inset-x-[max(0.5rem,env(safe-area-inset-left))] bottom-[max(0.5rem,env(safe-area-inset-bottom))] flex ${sim.status === "won" || sim.status === "lost" || briefing || facilitiesOpen || buildOpen || placement || sheetOpen ? "hidden" : ""} items-end justify-between gap-2`}>
           <div className="touch-only"><Joystick input={input} /></div>
-          <div className="desktop-only hud-panel rounded-xl px-3 py-1.5 text-xs">Move: WASD / Arrows · Open: click building · Choose: 1–5</div>
+          <div className="desktop-only hud-panel rounded-xl px-3 py-1.5 text-xs">Move: WASD / Arrows · Zoom: scroll / + − · Open: click building · Choose: 1–5</div>
+          <div className="flex min-w-0 flex-col items-end gap-1.5">
+          <div className="hud-panel pointer-events-auto flex items-center gap-1 rounded-xl p-1" role="group" aria-label="Map zoom">
+            <button onClick={() => zoomStep(-1)} aria-label="Zoom out" title="Zoom out (−)" className="hud-btn h-8 w-8 rounded-lg bg-hud-ink/50 text-lg font-bold hover:bg-hud-ink">−</button>
+            <button onClick={() => zoomStep(0)} aria-label="Reset zoom" title="Reset zoom (0)" className="hud-btn h-8 w-8 rounded-lg bg-hud-ink/50 text-sm font-bold hover:bg-hud-ink">⟲</button>
+            <button onClick={() => zoomStep(1)} aria-label="Zoom in" title="Zoom in (+)" className="hud-btn h-8 w-8 rounded-lg bg-hud-ink/50 text-lg font-bold hover:bg-hud-ink">+</button>
+          </div>
           <button onClick={() => setPipMin((v) => !v)} aria-label={pipMin ? "Show PIP's message" : "Hide PIP's message"} aria-expanded={!pipMin} className={`hud-panel pointer-events-auto flex min-w-0 items-end gap-2 rounded-2xl p-1.5 text-left sm:p-2 ${pipMin ? "" : compact ? "max-w-[min(62vw,22rem)]" : "max-w-[60vw] sm:max-w-sm"}`}>
             <span className="shrink-0 rounded-xl bg-hud-ink/40 p-1"><PipPortrait size={compact ? 44 : 56} /></span>
             {!pipMin && (
@@ -512,6 +521,7 @@ export function MarsGame() {
               </span>
             )}
           </button>
+          </div>
         </div>
       </div>
     </div>
