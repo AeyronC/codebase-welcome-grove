@@ -413,7 +413,7 @@ export function MarsGame() {
         )}
 
         {sim.status === "day" && banner > 0 && (
-          <div key={banner} className="sol-banner absolute inset-x-0 top-1/3 text-center">
+          <div key={`banner-${banner}`} className="sol-banner absolute inset-x-0 top-1/3 text-center">
             <div className="font-display text-4xl font-bold drop-shadow-lg sm:text-6xl">SOL {sim.sol}</div>
             <div className="text-lg font-bold">{info.icon} {info.label}</div>
           </div>
@@ -463,7 +463,7 @@ export function MarsGame() {
             ))}
           </div>
         )}
-        {toast && <div key={toast.id} className="sol-banner absolute inset-x-0 top-[22%] text-center"><span className="hud-panel inline-block rounded-2xl px-4 py-2 text-base font-bold text-accent sm:text-lg">{toast.text}</span></div>}
+        {toast && <div key={`toast-${toast.id}`} className="sol-banner absolute inset-x-0 top-[22%] text-center"><span className="hud-panel inline-block rounded-2xl px-4 py-2 text-base font-bold text-accent sm:text-lg">{toast.text}</span></div>}
 
         {facilitiesOpen && !sim.event && !briefing && <FacilityPanel compact={compact} facilities={facilityList} onClose={() => { play("close"); setFacilitiesOpen(false); }} onToggle={(id) => doAction(`facility-toggle:${id}`)} onRepair={(id) => doAction(`facility-repair:${id}`)} />}
         {buildOpen && !sim.event && !briefing && <BuildMenu compact={compact} sim={sim} onSelect={chooseBuild} onClose={() => { play("close"); setBuildOpen(false); }} />}

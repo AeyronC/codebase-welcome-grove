@@ -6,6 +6,6 @@
 - [x] Phase 7: touch-friendly construction UI, responsive panels and construction/completion audio
 - [x] Solar repair: larger panels, continuous cleaning with real net energy recovery, progress and cleanliness visuals
 - [x] Oxygen repair: slower use, exact 20%/10% alerts, immediate zero-oxygen game over and clean mission restart
-- [ ] Mobile optimisation: responsive HUD, collapsible panels, touch placement, no page scroll/zoom, lighter effects on phones
-- [ ] Audio: looping background music (calm/tense), facility + wind/storm ambience, low resource alerts, music/SFX volumes + master mute
-- [ ] Integration test pass of facilities, building, mobile and audio
+- [x] Mobile optimisation: responsive HUD, collapsible panels, touch placement, no page scroll/zoom, lighter effects on phones
+- [x] Audio: looping background music (calm/tense), facility + wind/storm ambience, low resource alerts, music/SFX volumes + master mute
+- [x] Integration test pass of facilities, building, mobile and audio

@@ -30,3 +30,5 @@ use the editor.
 <!-- LOVABLE:END -->
 
 - Survival simulation rules live in pure functions in src/game/sim.ts (tested in sim.test.ts); UI only calls tick/act so balance stays testable.
+- Audio rules (volumes, alert priority/cooldowns, music mood, ambience) live in pure functions in src/game/audioRules.ts (tested in audioRules.test.ts); src/game/sound.ts only synthesizes, so audio behaviour stays testable and no audio files are needed.
+- Phone layout is chosen by the media queries in src/hooks/use-compact.ts; on compact screens management panels render as the shared SHEET bottom sheet sized from the measured --hud-top, so panels never overlap the status bar.
