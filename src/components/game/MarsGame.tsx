@@ -12,6 +12,7 @@ import { alertSoundFor, ambienceFor, musicMood } from "@/game/audioRules";
 import { useCompact, useShortLandscape } from "@/hooks/use-compact";
 import { newFx, type Nav } from "@/game/fx";
 import { report, ACHIEVEMENTS, BREAK_NAMES, checkAchievements, EVENTS, resolveEvent, SITES, visibleSites, checkObjective, infoFor, OBJECTIVES, act, actionsFor, DAY_SECONDS, EVENT_INFO, eventOf, MAX_SOL, newSim, nextSol, SOL_EVENTS, tick, type Sim, priorities, pickPrimary, LEVEL_NAMES, stormPhase, stormOf, weatherNow, BREAK_STATION, type Priority, capacityOf, shieldOf, facilityViews, CLEANING_SECONDS, oxygenAlert, OXYGEN_LOW } from "@/game/sim";
+import { stepZoom } from "@/game/zoom";
 import type { Character, Landmark } from "@/game/types";
 
 const WELCOME = "Welcome to Mars, astronaut! I'm PIP, your colony buddy. Let's explore our new home!";
