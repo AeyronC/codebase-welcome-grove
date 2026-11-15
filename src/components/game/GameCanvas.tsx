@@ -4,16 +4,17 @@ import { drawDynamic, drawFacilities, drawPlacementGhost, drawValidSiteMarker, g
 import { drawNav, drawScreenFx, drawWorldFx, type Fx, type Nav } from "@/game/fx";
 import { canPlace, type BuildableKind, type Facility } from "@/game/facilities";
 import type { Character, Dir, Landmark } from "@/game/types";
+import { pinchZoom, stepZoom, viewZoom, wheelZoom } from "@/game/zoom";
 
 export interface InputState { x: number; y: number }
 
 export interface PlacementCursor { kind: BuildableKind; x: number; y: number; focusX: number; focusY: number }
-interface Props { character: Character; input: React.MutableRefObject<InputState>; onDiscover: (l: Landmark) => void; posRef?: React.MutableRefObject<{ x: number; y: number }>; markersRef?: React.MutableRefObject<{ x: number; y: number }[]>; speedRef?: React.MutableRefObject<number>; viewRef?: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; onWorldClick?: (x: number, y: number) => void; fxRef?: React.MutableRefObject<Fx>; navRef?: React.MutableRefObject<Nav | null>; facilitiesRef?: React.MutableRefObject<Facility[]>; placementRef?: React.MutableRefObject<PlacementCursor | null>; onPlacement?: (x: number, y: number) => void; solarRef?: React.MutableRefObject<{ cleanliness: number; progress: number | null }> }
+interface Props { character: Character; input: React.MutableRefObject<InputState>; onDiscover: (l: Landmark) => void; posRef?: React.MutableRefObject<{ x: number; y: number }>; markersRef?: React.MutableRefObject<{ x: number; y: number }[]>; speedRef?: React.MutableRefObject<number>; viewRef?: React.MutableRefObject<{ cx: number; cy: number; zoom: number }>; onWorldClick?: (x: number, y: number) => void; fxRef?: React.MutableRefObject<Fx>; navRef?: React.MutableRefObject<Nav | null>; facilitiesRef?: React.MutableRefObject<Facility[]>; placementRef?: React.MutableRefObject<PlacementCursor | null>; onPlacement?: (x: number, y: number) => void; solarRef?: React.MutableRefObject<{ cleanliness: number; progress: number | null }>; zoomRef?: React.MutableRefObject<number> }
 
 const SPEED = 260;
 const R = 16;
 
-export function GameCanvas({ character, input, onDiscover, posRef, markersRef, speedRef, viewRef, onWorldClick, fxRef, navRef, facilitiesRef, placementRef, onPlacement, solarRef }: Props) {
+export function GameCanvas({ character, input, onDiscover, posRef, markersRef, speedRef, viewRef, onWorldClick, fxRef, navRef, facilitiesRef, placementRef, onPlacement, solarRef, zoomRef }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const clickRef = useRef(onWorldClick);
   clickRef.current = onWorldClick;
@@ -32,7 +33,7 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
     const p = { x: SPAWN.x, y: SPAWN.y, dir: "down" as Dir, moving: false };
     const cam = { x: p.x, y: p.y };
     const keys = new Set<string>();
-    let raf = 0, last = performance.now(), t = 0;
+    let raf = 0, last = performance.now(), t = 0, shownZoom = 0;
 
     // Phones get a lower pixel density cap: much less fill work per frame, still sharp.
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -44,7 +45,13 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
     window.addEventListener("resize", resize);
     window.addEventListener("orientationchange", resize);
     window.visualViewport?.addEventListener("resize", resize);
-    const kd = (e: KeyboardEvent) => { const k = e.key.toLowerCase(); if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)) { keys.add(k); e.preventDefault(); } };
+    const zoomBy = (dir: 1 | -1) => { if (zoomRef) zoomRef.current = stepZoom(zoomRef.current, dir); };
+    const kd = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || (e.target as HTMLElement)?.tagName === "INPUT") { /* leave browser shortcuts and sliders alone */ }
+      else if (e.key === "+" || e.key === "=") { zoomBy(1); e.preventDefault(); return; }
+      else if (e.key === "-" || e.key === "_") { zoomBy(-1); e.preventDefault(); return; }
+      else if (e.key === "0") { if (zoomRef) zoomRef.current = 1; return; }
+      const k = e.key.toLowerCase(); if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)) { keys.add(k); e.preventDefault(); } };
     const ku = (e: KeyboardEvent) => keys.delete(e.key.toLowerCase());
     const blur = () => keys.clear();
     window.addEventListener("keydown", kd); window.addEventListener("keyup", ku); window.addEventListener("blur", blur);
@@ -53,7 +60,7 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       const vw = window.innerWidth, vh = window.innerHeight, v = viewRef?.current;
       return v ? { x: v.cx + (e.clientX - vw / 2) / v.zoom, y: v.cy + (e.clientY - vh / 2) / v.zoom } : null;
     };
-    const click = (e: PointerEvent) => {
+    const fire = (e: PointerEvent) => {
       const p = worldPoint(e); if (!p) return;
       if (placementRef?.current) {
         placementRef.current.x = p.x; placementRef.current.y = p.y; placementRef.current.focusX = p.x; placementRef.current.focusY = p.y;
@@ -62,13 +69,43 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       }
       clickRef.current?.(p.x, p.y);
     };
+    // Touch: a tap fires on release so a two-finger pinch never counts as a tap.
+    const touches = new Map<number, { x: number; y: number }>();
+    let tap: { id: number; x: number; y: number } | null = null;
+    let pinch: { dist: number; zoom: number } | null = null;
+    const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const click = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") { fire(e); return; }
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 1) tap = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      else { tap = null; if (touches.size === 2) pinch = { dist: spread(), zoom: zoomRef?.current ?? 1 }; }
+    };
+    const release = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      if (e.type === "pointerup" && tap?.id === e.pointerId) fire(e);
+      if (tap?.id === e.pointerId) tap = null;
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinch = null;
+    };
     const move = (e: PointerEvent) => {
-      if (!placementRef?.current || e.pointerType === "touch") return;
+      if (e.pointerType === "touch") {
+        if (!touches.has(e.pointerId)) return;
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 14) tap = null;
+        if (pinch && touches.size === 2 && zoomRef) zoomRef.current = pinchZoom(pinch.zoom, pinch.dist, spread());
+        return;
+      }
+      if (!placementRef?.current) return;
       const p = worldPoint(e); if (!p) return;
       placementRef.current.x = p.x; placementRef.current.y = p.y;
     };
     canvas.addEventListener("pointerdown", click);
     canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+    // Mouse wheel and trackpad pinch (ctrlKey wheel). Non-passive so the page itself never zooms.
+    const wheel = (e: WheelEvent) => { e.preventDefault(); if (zoomRef) zoomRef.current = wheelZoom(zoomRef.current, e.deltaY, e.deltaMode); };
+    canvas.addEventListener("wheel", wheel, { passive: false });
     const blocked = (x: number, y: number) =>
       x < R || x > WORLD_W - R || y < SKY_H + 40 || y > WORLD_H - R ||
       obstacles.some((o) => x + R > o.x && x - R < o.x + o.w && y > o.y && y - 10 < o.y + o.h);
@@ -99,7 +136,9 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       for (const l of LANDMARKS) if (!visited.has(l.id) && Math.hypot(p.x - l.x, p.y - l.y) < l.r) { visited.add(l.id); discoverRef.current(l); }
 
       const vw = window.innerWidth, vh = window.innerHeight;
-      const zoom = Math.max(0.55, Math.min(1.15, Math.min(vw, vh) / 720));
+      const targetZoom = viewZoom(vw, vh, zoomRef?.current ?? 1, WORLD_W, WORLD_H);
+      shownZoom = shownZoom ? shownZoom + (targetZoom - shownZoom) * Math.min(1, dt * 14) : targetZoom;
+      const zoom = Math.abs(shownZoom - targetZoom) < 0.0005 ? targetZoom : shownZoom;
       const hw = vw / 2 / zoom, hh = vh / 2 / zoom;
       const cameraTarget = placementRef?.current;
       cam.x += ((cameraTarget?.focusX ?? p.x) - cam.x) * Math.min(1, dt * 6); cam.y += ((cameraTarget?.focusY ?? (p.y - 40)) - cam.y) * Math.min(1, dt * 6);
@@ -141,8 +180,8 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    return () => { cancelAnimationFrame(raf); canvas.removeEventListener("pointerdown", click); canvas.removeEventListener("pointermove", move); window.removeEventListener("resize", resize); window.removeEventListener("orientationchange", resize); window.visualViewport?.removeEventListener("resize", resize); window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", blur); };
-  }, [character, input, posRef, markersRef, speedRef, viewRef, fxRef, navRef, facilitiesRef, placementRef, solarRef]);
+    return () => { cancelAnimationFrame(raf); canvas.removeEventListener("pointerdown", click); canvas.removeEventListener("pointermove", move); canvas.removeEventListener("pointerup", release); canvas.removeEventListener("pointercancel", release); canvas.removeEventListener("wheel", wheel); window.removeEventListener("resize", resize); window.removeEventListener("orientationchange", resize); window.visualViewport?.removeEventListener("resize", resize); window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", blur); };
+  }, [character, input, posRef, markersRef, speedRef, viewRef, fxRef, navRef, facilitiesRef, placementRef, solarRef, zoomRef]);
 
   return <canvas ref={ref} className="absolute inset-0 block h-full w-full" aria-label="Mars colony game world" />;
 }
