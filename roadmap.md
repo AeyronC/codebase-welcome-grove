@@ -9,3 +9,4 @@
 - [x] Mobile optimisation: responsive HUD, collapsible panels, touch placement, no page scroll/zoom, lighter effects on phones
 - [x] Audio: looping background music (calm/tense), facility + wind/storm ambience, low resource alerts, music/SFX volumes + master mute
 - [x] Integration test pass of facilities, building, mobile and audio
+- [x] Map zoom on laptop (scroll, trackpad pinch, + − 0 keys) and phone (two-finger pinch) with on-screen − ⟲ + buttons
