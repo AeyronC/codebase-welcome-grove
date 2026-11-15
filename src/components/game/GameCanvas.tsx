@@ -73,7 +73,7 @@ export function GameCanvas({ character, input, onDiscover, posRef, markersRef, s
     const touches = new Map<number, { x: number; y: number }>();
     let tap: { id: number; x: number; y: number } | null = null;
     let pinch: { dist: number; zoom: number } | null = null;
-    const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    const spread = () => { const [a, b] = [...touches.values()]; if (!a || !b) return 0; return Math.hypot(a.x - b.x, a.y - b.y); };
     const click = (e: PointerEvent) => {
       if (e.pointerType !== "touch") { fire(e); return; }
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
