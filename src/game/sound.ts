@@ -156,7 +156,8 @@ function voice(c: AudioContext, f: number, type: OscillatorType, t: number, a: n
   o.connect(e).connect(to); o.start(t); o.stop(t + a + hold + r + 0.05);
 }
 function scheduleBar(c: AudioContext, t0: number): number {
-  if (bar % 2 === 0) mood = wantMood; // mood only changes on a chord change, so it stays musical
+  // Mood changes on a chord change so it stays musical; danger may start a new chord early so it reacts fast.
+  if (wantMood !== mood && (bar % 2 === 0 || wantMood === "tense")) { mood = wantMood; if (bar % 2) bar++; }
   const tense = mood === "tense", beat = 60 / (tense ? 92 : 68), len = beat * 4, m = musicGraph(c);
   const chord = (tense ? TENSE : CALM)[Math.floor(bar / 2) % 4]!;
   m.pad.frequency.setTargetAtTime(tense ? 750 : 1400, t0, 1.5);
